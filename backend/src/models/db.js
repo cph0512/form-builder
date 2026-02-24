@@ -7,6 +7,7 @@ const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   password: process.env.DB_PASSWORD,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  family: 4,  // 強制 IPv4，避免 Railway 無法連線 IPv6
 });
 
 pool.on('connect', () => {
