@@ -1,11 +1,6 @@
 import { create } from 'zustand';
 import axios from 'axios';
 
-// 生產環境指向 Railway 後端
-if (process.env.REACT_APP_API_URL) {
-  axios.defaults.baseURL = process.env.REACT_APP_API_URL;
-}
-
 // 設定 axios 預設 token
 const setAuthHeader = (token) => {
   if (token) {

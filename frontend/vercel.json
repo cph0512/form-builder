@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://form-builder-production-96f8.up.railway.app/api/:path*"
+    }
+  ]
+}
