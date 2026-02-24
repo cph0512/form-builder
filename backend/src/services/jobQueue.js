@@ -21,7 +21,13 @@ async function poll() {
   const slots = MAX_CONCURRENT - activeJobs.size;
   if (slots <= 0) return;
 
-  const client = await pool.connect();
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (err) {
+    console.error('[JobQueue] DB 連線失敗，跳過此次輪詢:', err.message);
+    return;
+  }
   let jobIds = [];
 
   try {
