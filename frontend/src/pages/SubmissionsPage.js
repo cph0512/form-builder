@@ -62,6 +62,27 @@ export default function SubmissionsPage() {
     URL.revokeObjectURL(url);
   };
 
+  const exportBulkCsv = async () => {
+    if (!selectedFormId) return;
+    try {
+      const res = await axios.get('/api/submissions/export', {
+        params: { form_id: selectedFormId },
+        responseType: 'blob',
+      });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      const disposition = res.headers['content-disposition'];
+      const match = disposition && disposition.match(/filename\*?=(?:UTF-8'')?([^;\n]*)/i);
+      a.download = match ? decodeURIComponent(match[1].replace(/"/g, '')) : 'submissions.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success('CSV 匯出成功');
+    } catch {
+      toast.error('匯出失敗，請重試');
+    }
+  };
+
   return (
     <div style={{ padding: 32 }}>
       {/* Header */}
@@ -89,6 +110,11 @@ export default function SubmissionsPage() {
         {selectedFormId && (
           <button className="btn btn-ghost btn-sm" onClick={() => setSelectedFormId('')}>
             <X size={14} /> 清除
+          </button>
+        )}
+        {selectedFormId && (
+          <button className="btn btn-secondary btn-sm" onClick={exportBulkCsv} style={{ marginLeft: 'auto' }}>
+            <Download size={14} /> 匯出全部 CSV
           </button>
         )}
       </div>

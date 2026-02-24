@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import { Mic, MicOff, Send, ArrowLeft, Loader, X, Trash2, Upload } from 'lucide-react';
+import { FIELD_VALIDATORS } from '../utils/fieldTypes';
 
 export default function FormFillPage() {
   const { id } = useParams();
@@ -63,6 +64,10 @@ export default function FormFillPage() {
       }
       if (field.type === 'phone' && val && !/^[0-9+\-\s()]{7,15}$/.test(val)) {
         newErrors[field.id] = '請輸入有效的電話號碼';
+      }
+      if (field.type === 'id_number' && val) {
+        const result = FIELD_VALIDATORS.id_number(val);
+        if (result !== true) newErrors[field.id] = result;
       }
     });
     setErrors(newErrors);
@@ -460,6 +465,13 @@ function FieldInput({ field, value, onChange, isRecording, isTranscribing, onSta
           )}
         </div>
       );
+
+    case 'id_number':
+      return <input type="text" className="input" value={value || ''}
+        onChange={e => onChange(e.target.value.toUpperCase())}
+        placeholder={field.placeholder || 'A123456789'}
+        maxLength={10}
+        style={{ borderColor, fontFamily: 'monospace', letterSpacing: '0.1em' }} />;
 
     default:
       return <input type="text" className="input" value={value || ''} onChange={e => onChange(e.target.value)}

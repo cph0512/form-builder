@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useFormStore, useAuthStore } from '../store';
-import { PlusCircle, FileText, Edit2, Eye, Clock, ToggleLeft, ToggleRight, TrendingUp, Send, Calendar } from 'lucide-react';
+import { PlusCircle, FileText, Edit2, Eye, Clock, ToggleLeft, ToggleRight, TrendingUp, Send, Calendar, CheckCircle, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function DashboardPage() {
@@ -10,6 +10,7 @@ export default function DashboardPage() {
   const { user } = useAuthStore();
   const canCreate = ['super_admin', 'dept_admin'].includes(user?.role);
   const [stats, setStats] = useState(null);
+  const [chartPeriod, setChartPeriod] = useState('7d');
 
   const handleToggle = async (form) => {
     try {
@@ -26,9 +27,6 @@ export default function DashboardPage() {
       .then(res => setStats(res.data))
       .catch(() => {}); // 統計失敗不影響主功能
   }, []);
-
-  // 計算週趨勢最大值（用於繪製柱狀圖比例）
-  const weeklyMax = stats?.weekly?.reduce((m, d) => Math.max(m, d.count), 1) || 1;
 
   return (
     <div style={{ padding: 32 }}>
@@ -66,35 +64,80 @@ export default function DashboardPage() {
         ))}
       </div>
 
+      {/* CRM Stats */}
+      {stats && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, marginBottom: 28, maxWidth: '50%' }}>
+          {[
+            { label: 'CRM 寫入成功', value: stats.crm?.success ?? '—', color: '#10b981', icon: <CheckCircle size={18} /> },
+            { label: 'CRM 寫入失敗', value: stats.crm?.failed ?? '—', color: '#ef4444', icon: <AlertCircle size={18} /> },
+          ].map(stat => (
+            <div key={stat.label} className="card" style={{ padding: '18px 20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: stat.color }}>{stat.value}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)', marginTop: 4 }}>{stat.label}</div>
+                </div>
+                <div style={{ color: stat.color, opacity: 0.6 }}>{stat.icon}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Charts Row */}
       {stats && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
-          {/* Weekly Bar Chart */}
+          {/* Trend Bar Chart with period toggle */}
           <div className="card" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <TrendingUp size={16} color="var(--primary)" />
-              <span style={{ fontSize: 14, fontWeight: 700 }}>近 7 天提交趨勢</span>
-            </div>
-            {stats.weekly.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '20px 0', fontSize: 13 }}>尚無資料</div>
-            ) : (
-              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80 }}>
-                {stats.weekly.map(d => (
-                  <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                    <div style={{ fontSize: 10, color: 'var(--primary)', fontWeight: 700 }}>{d.count}</div>
-                    <div style={{
-                      width: '100%', borderRadius: '3px 3px 0 0',
-                      background: 'var(--primary)', opacity: 0.8,
-                      height: `${Math.max(4, (d.count / weeklyMax) * 60)}px`,
-                      transition: 'height 0.3s',
-                    }} />
-                    <div style={{ fontSize: 9, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
-                      {new Date(d.date).toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' })}
-                    </div>
-                  </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <TrendingUp size={16} color="var(--primary)" />
+                <span style={{ fontSize: 14, fontWeight: 700 }}>
+                  {chartPeriod === '7d' ? '近 7 天提交趨勢' : '近 30 天提交趨勢'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                {[{ key: '7d', label: '7天' }, { key: '30d', label: '30天' }].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    onClick={() => setChartPeriod(key)}
+                    className={`btn btn-sm ${chartPeriod === key ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ padding: '3px 10px', fontSize: 12 }}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
-            )}
+            </div>
+            {(() => {
+              const chartData = chartPeriod === '7d' ? (stats.weekly || []) : (stats.monthly || []);
+              const chartMax = chartData.reduce((m, d) => Math.max(m, d.count), 1);
+              return chartData.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: '20px 0', fontSize: 13 }}>尚無資料</div>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: chartPeriod === '30d' ? 2 : 6, height: 80 }}>
+                  {chartData.map(d => (
+                    <div key={d.date} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}
+                      title={`${d.date}: ${d.count} 筆`}>
+                      {chartPeriod === '7d' && (
+                        <div style={{ fontSize: 10, color: 'var(--primary)', fontWeight: 700 }}>{d.count}</div>
+                      )}
+                      <div style={{
+                        width: '100%', borderRadius: '3px 3px 0 0',
+                        background: 'var(--primary)', opacity: 0.8,
+                        height: `${Math.max(2, (d.count / chartMax) * 60)}px`,
+                        transition: 'height 0.3s',
+                      }} />
+                      {chartPeriod === '7d' && (
+                        <div style={{ fontSize: 9, color: 'var(--text-3)', whiteSpace: 'nowrap' }}>
+                          {new Date(d.date + 'T00:00:00').toLocaleDateString('zh-TW', { month: 'numeric', day: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Top Forms */}

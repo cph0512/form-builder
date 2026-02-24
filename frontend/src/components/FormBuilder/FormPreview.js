@@ -99,6 +99,9 @@ function FieldPreview({ field }) {
       );
     case 'address':
       return <input type="text" className="input" placeholder="請輸入完整地址" readOnly />;
+    case 'id_number':
+      return <input type="text" className="input" placeholder="A123456789" maxLength={10}
+        style={{ fontFamily: 'monospace', letterSpacing: '0.1em' }} readOnly />;
     default:
       return <input type="text" className="input" placeholder={field.placeholder || ''} readOnly />;
   }

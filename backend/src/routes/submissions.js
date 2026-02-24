@@ -14,7 +14,7 @@ router.get('/stats', async (req, res) => {
       params.push(req.user.id);
     }
 
-    const [totalRes, todayRes, byFormRes, weeklyRes] = await Promise.all([
+    const [totalRes, todayRes, byFormRes, weeklyRes, monthlyRes, crmRes] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int as total FROM form_submissions fs ${userFilter}`, [...params]),
       pool.query(
         `SELECT COUNT(*)::int as today FROM form_submissions fs ${userFilter ? userFilter + ' AND' : 'WHERE'} DATE(fs.submitted_at) = CURRENT_DATE`,
@@ -36,17 +36,112 @@ router.get('/stats', async (req, res) => {
          ORDER BY date DESC LIMIT 7`,
         [...params]
       ),
+      pool.query(
+        `SELECT DATE(fs.submitted_at)::text as date, COUNT(*)::int as count
+         FROM form_submissions fs
+         ${userFilter ? userFilter + ' AND' : 'WHERE'} fs.submitted_at >= CURRENT_DATE - INTERVAL '29 days'
+         GROUP BY DATE(fs.submitted_at)
+         ORDER BY date ASC`,
+        [...params]
+      ),
+      pool.query(
+        `SELECT status, COUNT(*)::int as count FROM crm_write_jobs GROUP BY status`
+      ),
     ]);
+
+    const crmStats = { pending: 0, running: 0, success: 0, failed: 0, cancelled: 0 };
+    crmRes.rows.forEach(r => { crmStats[r.status] = r.count; });
 
     res.json({
       total: totalRes.rows[0].total,
       today: todayRes.rows[0].today,
       byForm: byFormRes.rows,
       weekly: weeklyRes.rows.reverse(),
+      monthly: monthlyRes.rows,
+      crm: crmStats,
     });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// GET /api/submissions/export?form_id=...&format=csv - 批量匯出 CSV
+router.get('/export', async (req, res) => {
+  const { form_id } = req.query;
+
+  try {
+    const conditions = [];
+    const params = [];
+    let idx = 1;
+
+    if (req.user.role === 'staff') {
+      conditions.push(`fs.submitted_by = $${idx++}`);
+      params.push(req.user.id);
+    }
+    if (form_id) {
+      conditions.push(`fs.form_id = $${idx++}`);
+      params.push(form_id);
+    }
+
+    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+    const dataRes = await pool.query(
+      `SELECT fs.id, fs.data, fs.crm_sync_status, fs.submitted_at,
+              u.name as submitter_name, f.title as form_title
+       FROM form_submissions fs
+       LEFT JOIN users u ON fs.submitted_by = u.id
+       LEFT JOIN forms f ON fs.form_id = f.id
+       ${where}
+       ORDER BY fs.submitted_at ASC`,
+      params
+    );
+
+    const rows = dataRes.rows;
+    if (rows.length === 0) {
+      return res.status(404).json({ error: '無提交記錄可匯出' });
+    }
+
+    // 動態收集所有提交的欄位 keys
+    const allKeys = new Set();
+    rows.forEach(row => {
+      Object.keys(row.data || {}).forEach(k => allKeys.add(k));
+    });
+    const fieldKeys = Array.from(allKeys);
+
+    const escapeCsv = (val) => {
+      const str = Array.isArray(val) ? val.join(', ') : String(val == null ? '' : val);
+      return `"${str.replace(/"/g, '""')}"`;
+    };
+
+    const headerRow = ['編號', '表單', '提交者', '提交時間', 'CRM狀態', ...fieldKeys]
+      .map(escapeCsv).join(',');
+
+    const dataRows = rows.map(row => {
+      const base = [
+        row.id,
+        row.form_title || '',
+        row.submitter_name || '',
+        new Date(row.submitted_at).toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' }),
+        row.crm_sync_status || '',
+      ];
+      const fields = fieldKeys.map(k => (row.data || {})[k]);
+      return [...base, ...fields].map(escapeCsv).join(',');
+    });
+
+    const csv = '\uFEFF' + [headerRow, ...dataRows].join('\n');
+
+    const formTitle = rows[0]?.form_title || 'submissions';
+    const safeTitle = formTitle.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = `${safeTitle}_${timestamp}.csv`;
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+    res.send(csv);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: '匯出失敗' });
   }
 });
 
