@@ -6,14 +6,27 @@ const { logAction, getIp } = require('../middleware/audit');
 
 const router = express.Router();
 
-// GET /api/forms - 取得表單列表
+// GET /api/forms - 取得表單列表（staff 只看被指派的表單）
 router.get('/', async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT f.id, f.title, f.description, f.is_active, f.created_at, u.name as creator_name
-       FROM forms f LEFT JOIN users u ON f.created_by = u.id
-       ORDER BY f.created_at DESC`
-    );
+    let query, params;
+    if (req.user.role === 'staff') {
+      // staff 只能看到被指派且啟用中的表單
+      query = `SELECT f.id, f.title, f.description, f.is_active, f.created_at, u.name as creator_name
+               FROM forms f
+               INNER JOIN form_assignments fa ON f.id = fa.form_id AND fa.user_id = $1
+               LEFT JOIN users u ON f.created_by = u.id
+               WHERE f.is_active = true
+               ORDER BY f.created_at DESC`;
+      params = [req.user.id];
+    } else {
+      // 管理員/manager 看到所有表單
+      query = `SELECT f.id, f.title, f.description, f.is_active, f.created_at, u.name as creator_name
+               FROM forms f LEFT JOIN users u ON f.created_by = u.id
+               ORDER BY f.created_at DESC`;
+      params = [];
+    }
+    const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
@@ -96,8 +109,8 @@ router.put('/:id', requireRole('super_admin', 'dept_admin'), async (req, res) =>
   }
 });
 
-// PATCH /api/forms/:id/status - 切換表單啟用/停用狀態
-router.patch('/:id/status', requireRole('super_admin', 'dept_admin'), async (req, res) => {
+// PATCH /api/forms/:id/status - 切換表單啟用/停用狀態（僅 super_admin）
+router.patch('/:id/status', requireRole('super_admin'), async (req, res) => {
   try {
     const current = await pool.query('SELECT is_active FROM forms WHERE id=$1', [req.params.id]);
     if (!current.rows[0]) return res.status(404).json({ error: '表單不存在' });
@@ -137,6 +150,49 @@ router.get('/:id/versions', async (req, res) => {
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// GET /api/forms/:id/assignments - 取得表單的指派使用者清單
+router.get('/:id/assignments', requireRole('super_admin', 'dept_admin'), async (req, res) => {
+  try {
+    const rows = await pool.query(
+      `SELECT u.id, u.name, u.email, u.role, d.name as dept_name
+       FROM form_assignments fa
+       INNER JOIN users u ON fa.user_id = u.id
+       LEFT JOIN departments d ON u.department_id = d.id
+       WHERE fa.form_id = $1
+       ORDER BY u.name`,
+      [req.params.id]
+    );
+    res.json(rows.rows);
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// PUT /api/forms/:id/assignments - 全量替換指派清單
+router.put('/:id/assignments', requireRole('super_admin', 'dept_admin'), async (req, res) => {
+  const { user_ids = [] } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM form_assignments WHERE form_id = $1', [req.params.id]);
+    for (const uid of user_ids) {
+      await client.query(
+        'INSERT INTO form_assignments (form_id, user_id, assigned_by) VALUES ($1, $2, $3)',
+        [req.params.id, uid, req.user.id]
+      );
+    }
+    await client.query('COMMIT');
+    logAction(req.user.id, 'form.assign', 'form', req.params.id, { count: user_ids.length }, getIp(req));
+    res.json({ message: '指派已更新', count: user_ids.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    console.error(e);
+    res.status(500).json({ error: '伺服器錯誤' });
+  } finally {
+    client.release();
   }
 });
 

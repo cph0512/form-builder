@@ -58,7 +58,7 @@ export default function Layout() {
             </>
           )}
 
-          {canCreate && (
+          {user?.role === 'super_admin' && (
             <>
               {!collapsed ? <SectionLabel style={{ marginTop: 8 }}>CRM 整合</SectionLabel> : <Divider />}
               <NavItem to="/crm/connections" icon={<Database size={18} />} label="CRM 連線" collapsed={collapsed} />

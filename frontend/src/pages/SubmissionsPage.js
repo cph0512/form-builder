@@ -5,9 +5,12 @@ import { FileText, Search, ChevronLeft, ChevronRight, X, Eye, Download } from 'l
 import { useFormStore } from '../store';
 
 const CRM_STATUS = {
-  pending: { label: '待同步', color: '#f59e0b', bg: '#fef3c7' },
-  success: { label: '已同步', color: '#10b981', bg: '#d1fae5' },
-  failed: { label: '失敗', color: '#ef4444', bg: '#fee2e2' },
+  pending:  { label: '待同步',   color: '#f59e0b', bg: '#fef3c7' },
+  success:  { label: '已同步',   color: '#10b981', bg: '#d1fae5' },
+  failed:   { label: '失敗',     color: '#ef4444', bg: '#fee2e2' },
+  syncing:  { label: '同步中',   color: '#3b82f6', bg: '#dbeafe' },
+  partial:  { label: '部分同步', color: '#f59e0b', bg: '#fef3c7' },
+  not_configured: { label: '未設定', color: '#94a3b8', bg: '#f1f5f9' },
 };
 
 export default function SubmissionsPage() {

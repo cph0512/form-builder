@@ -5,6 +5,7 @@ import {
   RefreshCw, RotateCcw, XCircle, Loader,
   CheckCircle, Clock, AlertTriangle, Play,
 } from 'lucide-react';
+import { useAuthStore } from '../store';
 
 const STATUS_CFG = {
   pending:   { label: '等待中', color: '#f59e0b', bg: '#fef3c7', icon: Clock },
@@ -16,6 +17,8 @@ const STATUS_CFG = {
 const LIMIT = 20;
 
 export default function CrmJobsPage() {
+  const { user } = useAuthStore();
+  const canManageJobs = ['super_admin', 'dept_admin'].includes(user?.role);
   const [jobs,   setJobs]   = useState([]);
   const [stats,  setStats]  = useState({ pending: 0, running: 0, success: 0, failed: 0, cancelled: 0 });
   const [filter, setFilter] = useState('');
@@ -227,9 +230,9 @@ export default function CrmJobsPage() {
                   <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{fmt(job.created_at)}</div>
                   <div style={{ color: 'var(--text-2)', fontSize: 12 }}>{fmt(job.completed_at)}</div>
 
-                  {/* Actions */}
+                  {/* Actions（僅 super_admin / dept_admin 可操作）*/}
                   <div style={{ display: 'flex', gap: 4 }}>
-                    {job.status === 'failed' && (
+                    {canManageJobs && job.status === 'failed' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => handleRetry(job.id)}
                         disabled={isActing} title="重試" style={{ padding: '5px 8px' }}>
                         {isActing
@@ -237,7 +240,7 @@ export default function CrmJobsPage() {
                           : <RotateCcw size={13} />}
                       </button>
                     )}
-                    {job.status === 'pending' && (
+                    {canManageJobs && job.status === 'pending' && (
                       <button className="btn btn-ghost btn-sm" onClick={() => handleCancel(job.id)}
                         disabled={isActing} title="取消"
                         style={{ padding: '5px 8px', color: 'var(--danger)' }}>

@@ -212,14 +212,14 @@ export default function DashboardPage() {
                   </Link>
                 )}
                 {canCreate && (
-                  <>
-                    <Link to={`/builder/${form.id}`} className="btn btn-primary btn-sm">
-                      <Edit2 size={14} /> 編輯
-                    </Link>
-                    <button className="btn btn-secondary btn-sm" onClick={() => handleToggle(form)} title={form.is_active ? '停用表單' : '啟用表單'}>
-                      {form.is_active ? <ToggleRight size={16} color="#10b981" /> : <ToggleLeft size={16} color="#94a3b8" />}
-                    </button>
-                  </>
+                  <Link to={`/builder/${form.id}`} className="btn btn-primary btn-sm">
+                    <Edit2 size={14} /> 編輯
+                  </Link>
+                )}
+                {user?.role === 'super_admin' && (
+                  <button className="btn btn-secondary btn-sm" onClick={() => handleToggle(form)} title={form.is_active ? '停用表單' : '啟用表單'}>
+                    {form.is_active ? <ToggleRight size={16} color="#10b981" /> : <ToggleLeft size={16} color="#94a3b8" />}
+                  </button>
                 )}
               </div>
             </div>

@@ -12,6 +12,11 @@ router.get('/stats', async (req, res) => {
     if (req.user.role === 'staff') {
       userFilter = 'WHERE fs.submitted_by = $1';
       params.push(req.user.id);
+    } else if (['dept_admin', 'manager'].includes(req.user.role)) {
+      // 部門管理員/主管只看本部門成員的提交記錄
+      userFilter = `WHERE fs.submitted_by IN (
+        SELECT id FROM users WHERE department_id = $1 AND is_active = true)`;
+      params.push(req.user.department_id);
     }
 
     const [totalRes, todayRes, byFormRes, weeklyRes, monthlyRes, crmRes] = await Promise.all([
@@ -78,6 +83,9 @@ router.get('/export', async (req, res) => {
     if (req.user.role === 'staff') {
       conditions.push(`fs.submitted_by = $${idx++}`);
       params.push(req.user.id);
+    } else if (['dept_admin', 'manager'].includes(req.user.role)) {
+      conditions.push(`u.department_id = $${idx++}`);
+      params.push(req.user.department_id);
     }
     if (form_id) {
       conditions.push(`fs.form_id = $${idx++}`);
@@ -230,6 +238,10 @@ router.get('/', async (req, res) => {
     if (req.user.role === 'staff') {
       conditions.push(`fs.submitted_by = $${idx++}`);
       params.push(req.user.id);
+    } else if (['dept_admin', 'manager'].includes(req.user.role)) {
+      // 部門管理員/主管只看本部門成員的提交記錄（子查詢，避免 JOIN 問題）
+      conditions.push(`fs.submitted_by IN (SELECT id FROM users WHERE department_id = $${idx++} AND is_active = true)`);
+      params.push(req.user.department_id);
     }
     if (form_id) {
       conditions.push(`fs.form_id = $${idx++}`);

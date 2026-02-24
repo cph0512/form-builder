@@ -41,7 +41,7 @@ export default function CrmConnectionsPage() {
   const [testResults, setTestResults] = useState({});
   const [showPwd, setShowPwd] = useState(false);
 
-  const isAdmin = ['super_admin', 'dept_admin'].includes(user?.role);
+  const isAdmin = user?.role === 'super_admin';
   const inspector = useSelectorInspector();
 
   useEffect(() => { fetchConnections(); }, []);

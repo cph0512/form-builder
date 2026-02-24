@@ -54,17 +54,17 @@ export default function App() {
             </ProtectedRoute>
           } />
           <Route path="crm/connections" element={
-            <ProtectedRoute roles={['super_admin', 'dept_admin']}>
+            <ProtectedRoute roles={['super_admin']}>
               <CrmConnectionsPage />
             </ProtectedRoute>
           } />
           <Route path="crm/mapping" element={
-            <ProtectedRoute roles={['super_admin', 'dept_admin']}>
+            <ProtectedRoute roles={['super_admin']}>
               <CrmMappingPage />
             </ProtectedRoute>
           } />
           <Route path="crm/jobs" element={
-            <ProtectedRoute roles={['super_admin', 'dept_admin']}>
+            <ProtectedRoute roles={['super_admin']}>
               <CrmJobsPage />
             </ProtectedRoute>
           } />

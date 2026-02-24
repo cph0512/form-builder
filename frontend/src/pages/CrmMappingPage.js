@@ -4,11 +4,14 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Plus, Trash2, Save, Loader, Wand2, Info } from 'lucide-react';
 import { useSelectorInspector, InspectorBtn, SelectorInspectorModal } from '../components/SelectorInspector';
+import { useAuthStore } from '../store';
 
 export default function CrmMappingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const connIdFromUrl = searchParams.get('conn') || '';
+  const { user } = useAuthStore();
+  const isSuperAdmin = user?.role === 'super_admin';
 
   const [forms, setForms] = useState([]);
   const [connections, setConnections] = useState([]);
@@ -126,16 +129,18 @@ export default function CrmMappingPage() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          {ready && formFields.length > 0 && (
+          {isSuperAdmin && ready && formFields.length > 0 && (
             <button className="btn btn-ghost" onClick={autoFill}>
               <Wand2 size={15} /> 從表單自動填入
             </button>
           )}
-          <button className="btn btn-primary" onClick={handleSave} disabled={isSaving || !ready}>
-            {isSaving
-              ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> 儲存中...</>
-              : <><Save size={15} /> 儲存對應</>}
-          </button>
+          {isSuperAdmin && (
+            <button className="btn btn-primary" onClick={handleSave} disabled={isSaving || !ready}>
+              {isSaving
+                ? <><Loader size={14} style={{ animation: 'spin 1s linear infinite' }} /> 儲存中...</>
+                : <><Save size={15} /> 儲存對應</>}
+            </button>
+          )}
         </div>
       </div>
 
@@ -198,9 +203,11 @@ export default function CrmMappingPage() {
                 共 {mappings.length} 個對應
               </span>
             </span>
-            <button className="btn btn-ghost btn-sm" onClick={addRow}>
-              <Plus size={14} /> 新增一行
-            </button>
+            {isSuperAdmin && (
+              <button className="btn btn-ghost btn-sm" onClick={addRow}>
+                <Plus size={14} /> 新增一行
+              </button>
+            )}
           </div>
 
           {mappings.length === 0 ? (
@@ -286,18 +293,22 @@ export default function CrmMappingPage() {
                     onChange={e => updateRow(idx, 'note', e.target.value)} />
 
                   {/* Delete */}
-                  <button className="btn btn-ghost btn-sm" onClick={() => removeRow(idx)}
-                    style={{ color: 'var(--danger)', padding: '6px 8px' }}>
-                    <Trash2 size={14} />
-                  </button>
+                  {isSuperAdmin ? (
+                    <button className="btn btn-ghost btn-sm" onClick={() => removeRow(idx)}
+                      style={{ color: 'var(--danger)', padding: '6px 8px' }}>
+                      <Trash2 size={14} />
+                    </button>
+                  ) : <div />}
                 </div>
               ))}
 
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
-                <button className="btn btn-ghost btn-sm" onClick={addRow}>
-                  <Plus size={14} /> 新增一行
-                </button>
-              </div>
+              {isSuperAdmin && (
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 4 }}>
+                  <button className="btn btn-ghost btn-sm" onClick={addRow}>
+                    <Plus size={14} /> 新增一行
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

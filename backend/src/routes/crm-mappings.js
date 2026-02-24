@@ -29,7 +29,7 @@ router.get('/', async (req, res) => {
 });
 
 // PUT /api/crm/mappings - 新增或更新對應（upsert）
-router.put('/', requireRole('super_admin', 'dept_admin'), async (req, res) => {
+router.put('/', requireRole('super_admin'), async (req, res) => {
   const { form_id, crm_connection_id, mappings = [], is_active = true } = req.body;
   if (!form_id || !crm_connection_id) {
     return res.status(400).json({ error: '請提供 form_id 和 crm_connection_id' });
@@ -52,7 +52,7 @@ router.put('/', requireRole('super_admin', 'dept_admin'), async (req, res) => {
 });
 
 // DELETE /api/crm/mappings/:id
-router.delete('/:id', requireRole('super_admin', 'dept_admin'), async (req, res) => {
+router.delete('/:id', requireRole('super_admin'), async (req, res) => {
   try {
     await pool.query('DELETE FROM crm_field_mappings WHERE id=$1', [req.params.id]);
     res.json({ message: '已刪除' });

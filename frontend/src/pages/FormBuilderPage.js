@@ -1,20 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable';
 import axios from 'axios';
-import { useFormStore } from '../store';
+import { useFormStore, useAuthStore } from '../store';
 import { FIELD_TYPES, createField } from '../utils/fieldTypes';
 import SortableField from '../components/FormBuilder/SortableField';
 import FieldEditor from '../components/FormBuilder/FieldEditor';
 import FormPreview from '../components/FormBuilder/FormPreview';
-import { Save, Eye, ArrowLeft, Plus, History, X, RotateCcw } from 'lucide-react';
+import { Save, Eye, ArrowLeft, Plus, History, X, RotateCcw, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FormBuilderPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { fetchForm, saveForm } = useFormStore();
+  const { user } = useAuthStore();
+  const canCreate = ['super_admin', 'dept_admin'].includes(user?.role);
 
   const [title, setTitle] = useState('未命名表單');
   const [description, setDescription] = useState('');
@@ -130,13 +132,24 @@ export default function FormBuilderPage() {
           <button className={`btn btn-sm ${activeTab === 'preview' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('preview')}>
             <Eye size={14} /> 預覽
           </button>
+          {formId && canCreate && (
+            <button className={`btn btn-sm ${activeTab === 'assign' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setActiveTab('assign')}>
+              <Users size={14} /> 指派人員
+            </button>
+          )}
           <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={isSaving}>
             <Save size={14} /> {isSaving ? '儲存中...' : '儲存'}
           </button>
         </div>
       </div>
 
-      {activeTab === 'preview' ? (
+      {activeTab === 'assign' && formId ? (
+        <div style={{ flex: 1, overflow: 'auto', padding: 32, display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: '100%', maxWidth: 640 }}>
+            <AssignTab formId={formId} />
+          </div>
+        </div>
+      ) : activeTab === 'preview' ? (
         <div style={{ flex: 1, overflow: 'auto', padding: 32, display: 'flex', justifyContent: 'center' }}>
           <div style={{ width: '100%', maxWidth: 640 }}>
             <FormPreview title={title} description={description} fields={fields} />
@@ -220,7 +233,7 @@ export default function FormBuilderPage() {
         </div>
       )}
 
-      {/* Version History Modal */}
+      {/* ── Version History Modal ── */}
       {showVersions && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9999,
@@ -304,6 +317,117 @@ export default function FormBuilderPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── 指派人員 Tab 元件 ──
+function AssignTab({ formId }) {
+  const [allStaff, setAllStaff] = useState([]);
+  const [assignedIds, setAssignedIds] = useState(new Set());
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    setIsLoading(true);
+    Promise.all([
+      axios.get(`/api/forms/${formId}/assignments`),
+      axios.get('/api/auth/users'),
+    ]).then(([assignRes, usersRes]) => {
+      const assigned = new Set(assignRes.data.map(u => u.id));
+      setAssignedIds(assigned);
+      // 只顯示 staff 角色的使用者
+      setAllStaff(usersRes.data.filter(u => u.role === 'staff' && u.is_active !== false));
+    }).catch(() => toast.error('載入指派資料失敗'))
+      .finally(() => setIsLoading(false));
+  }, [formId]);
+
+  const toggle = (uid) => {
+    setAssignedIds(prev => {
+      const next = new Set(prev);
+      next.has(uid) ? next.delete(uid) : next.add(uid);
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      await axios.put(`/api/forms/${formId}/assignments`, {
+        user_ids: Array.from(assignedIds),
+      });
+      toast.success(`已指派 ${assignedIds.size} 位人員`);
+    } catch {
+      toast.error('儲存失敗，請重試');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-3)' }}>
+        載入中...
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>指派人員</h3>
+            <p style={{ fontSize: 13, color: 'var(--text-2)' }}>
+              勾選可填寫此表單的人員（staff 角色）。已指派 {assignedIds.size} 位。
+            </p>
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={isSaving}>
+            <Save size={14} /> {isSaving ? '儲存中...' : '儲存指派'}
+          </button>
+        </div>
+
+        {allStaff.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-3)', fontSize: 14 }}>
+            目前系統中尚無 staff 角色使用者
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* 全選/全不選 */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button className="btn btn-ghost btn-sm"
+                onClick={() => setAssignedIds(new Set(allStaff.map(u => u.id)))}>
+                全選
+              </button>
+              <button className="btn btn-ghost btn-sm"
+                onClick={() => setAssignedIds(new Set())}>
+                全不選
+              </button>
+            </div>
+            {allStaff.map(u => (
+              <label key={u.id} style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                background: assignedIds.has(u.id) ? 'var(--primary-light)' : 'var(--surface-2)',
+                border: `1.5px solid ${assignedIds.has(u.id) ? 'var(--primary)' : 'transparent'}`,
+                transition: 'all 0.15s',
+              }}>
+                <input type="checkbox"
+                  checked={assignedIds.has(u.id)}
+                  onChange={() => toggle(u.id)}
+                  style={{ width: 16, height: 16, accentColor: 'var(--primary)' }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 500 }}>{u.name}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-2)' }}>
+                    {u.email} {u.dept_name ? `· ${u.dept_name}` : ''}
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
