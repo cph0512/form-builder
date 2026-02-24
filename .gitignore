@@ -1,0 +1,16 @@
+# 環境變數（絕對不能推上去！）
+.env
+.env.local
+.env.production
+
+# 套件資料夾
+node_modules/
+
+# 上傳的檔案
+uploads/*
+!uploads/.gitkeep
+
+# 其他
+.DS_Store
+screenshots/
+build/
