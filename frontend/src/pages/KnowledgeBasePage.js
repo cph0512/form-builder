@@ -57,6 +57,7 @@ export default function KnowledgeBasePage() {
 function ListTab() {
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [q, setQ]               = useState('');
   const [catFilter, setCat]     = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -66,9 +67,14 @@ function ListTab() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const { data } = await axios.get('/api/knowledge', { params: { q, category: catFilter } });
       setItems(data);
+    } catch (err) {
+      const msg = err.response?.data?.error || err.message || '未知錯誤';
+      setLoadError(msg);
+      console.error('[知識庫] 載入失敗:', msg, err.response?.status);
     } finally { setLoading(false); }
   }, [q, catFilter]);
 
@@ -115,9 +121,27 @@ function ListTab() {
         </span>
       </div>
 
+      {loadError && (
+        <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>載入失敗</div>
+            <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>{loadError}</div>
+            {loadError.includes('does not exist') && (
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
+                請先在 Supabase SQL Editor 執行 migration 008（建立 knowledge_base 資料表）
+              </div>
+            )}
+          </div>
+          <button onClick={load} style={{ marginLeft: 'auto', fontSize: 12, padding: '6px 14px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer' }}>
+            重試
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>載入中...</div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && !loadError ? (
         <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
           <div>知識庫是空的，請先新增條目</div>
