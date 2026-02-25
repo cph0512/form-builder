@@ -52,14 +52,14 @@ router.get('/', authenticateToken, requirePermission('linebot_manage'), async (r
   const { q = '', category } = req.query;
   try {
     const params = [];
-    const conditions = ['is_active=true'];
+    const conditions = ['kb.is_active=true'];
     if (q.trim()) {
       params.push(`%${q}%`);
-      conditions.push(`(title ILIKE $${params.length} OR content ILIKE $${params.length})`);
+      conditions.push(`(kb.title ILIKE $${params.length} OR kb.content ILIKE $${params.length})`);
     }
     if (category && ALLOWED_CATEGORIES.includes(category)) {
       params.push(category);
-      conditions.push(`category=$${params.length}`);
+      conditions.push(`kb.category=$${params.length}`);
     }
     const { rows } = await pool.query(
       `SELECT kb.*, u.name as creator_name
