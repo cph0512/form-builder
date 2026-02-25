@@ -12,8 +12,10 @@ const voiceRoutes = require('./routes/voice');
 const crmConnectionRoutes = require('./routes/crm-connections');
 const crmMappingRoutes = require('./routes/crm-mappings');
 const crmJobRoutes = require('./routes/crm-jobs');
+const linebotRoutes = require('./routes/linebot');
 const { authenticateToken } = require('./middleware/auth');
 const jobQueue = require('./services/jobQueue');
+const linebotCron = require('./services/linebotCron');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -41,6 +43,8 @@ app.use(cors({
   },
   credentials: true
 }));
+// LINE Webhook 需要 raw body 做簽名驗證，必須在 express.json() 之前
+app.use('/api/linebot/webhook', express.raw({ type: '*/*' }));
 app.use(express.json({ limit: '10mb' }));
 
 // 靜態檔案（上傳圖片）
@@ -65,6 +69,7 @@ app.use('/api/voice', authenticateToken, voiceRoutes);
 app.use('/api/crm/connections', authenticateToken, crmConnectionRoutes);
 app.use('/api/crm/mappings', authenticateToken, crmMappingRoutes);
 app.use('/api/crm/jobs', authenticateToken, crmJobRoutes);
+app.use('/api/linebot', linebotRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -77,9 +82,10 @@ app.use((err, req, res, next) => {
 
 const server = app.listen(PORT, () => {
   console.log(`✅ 後端 API 啟動於 http://localhost:${PORT}`);
-  jobQueue.start();  // 啟動 CRM 任務佇列
+  jobQueue.start();     // 啟動 CRM 任務佇列
+  linebotCron.start();  // 啟動 LINE Bot 提醒排程
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => { jobQueue.stop(); server.close(); });
-process.on('SIGINT',  () => { jobQueue.stop(); server.close(); });
+process.on('SIGTERM', () => { jobQueue.stop(); linebotCron.stop(); server.close(); });
+process.on('SIGINT',  () => { jobQueue.stop(); linebotCron.stop(); server.close(); });

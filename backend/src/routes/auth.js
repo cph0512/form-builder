@@ -9,8 +9,8 @@ const router = express.Router();
 
 // 每個角色的預設功能權限
 const ROLE_DEFAULT_FEATURES = {
-  super_admin: ['form_create', 'form_status', 'submissions', 'submissions_export', 'users_manage', 'dept_manage', 'crm_connections', 'crm_mapping', 'crm_jobs'],
-  dept_admin:  ['form_create', 'submissions', 'submissions_export', 'users_manage', 'crm_connections', 'crm_mapping', 'crm_jobs'],
+  super_admin: ['form_create', 'form_status', 'submissions', 'submissions_export', 'users_manage', 'dept_manage', 'crm_connections', 'crm_mapping', 'crm_jobs', 'linebot_manage'],
+  dept_admin:  ['form_create', 'submissions', 'submissions_export', 'users_manage', 'crm_connections', 'crm_mapping', 'crm_jobs', 'linebot_manage'],
   manager:     ['submissions'],
   staff:       [],
 };

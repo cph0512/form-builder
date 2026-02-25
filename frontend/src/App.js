@@ -12,6 +12,7 @@ import SubmissionsPage from './pages/SubmissionsPage';
 import CrmConnectionsPage from './pages/CrmConnectionsPage';
 import CrmMappingPage from './pages/CrmMappingPage';
 import CrmJobsPage from './pages/CrmJobsPage';
+import LineBotPage from './pages/LineBotPage';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children, roles, permission }) => {
@@ -67,6 +68,11 @@ export default function App() {
           <Route path="crm/jobs" element={
             <ProtectedRoute permission="crm_jobs">
               <CrmJobsPage />
+            </ProtectedRoute>
+          } />
+          <Route path="linebot" element={
+            <ProtectedRoute permission="linebot_manage">
+              <LineBotPage />
             </ProtectedRoute>
           } />
         </Route>

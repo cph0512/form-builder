@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store';
-import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity, MessageSquare } from 'lucide-react';
 
 const ROLE_LABELS = {
   super_admin: '超級管理員',
@@ -64,6 +64,13 @@ export default function Layout() {
               {hasPermission('crm_connections') && <NavItem to="/crm/connections" icon={<Database size={18} />} label="CRM 連線" collapsed={collapsed} />}
               {hasPermission('crm_mapping') && <NavItem to="/crm/mapping" icon={<ArrowLeftRight size={18} />} label="欄位對應" collapsed={collapsed} />}
               {hasPermission('crm_jobs') && <NavItem to="/crm/jobs" icon={<Activity size={18} />} label="任務監控" collapsed={collapsed} />}
+            </>
+          )}
+
+          {hasPermission('linebot_manage') && (
+            <>
+              {!collapsed ? <SectionLabel style={{ marginTop: 8 }}>LINE Bot</SectionLabel> : <Divider />}
+              <NavItem to="/linebot" icon={<MessageSquare size={18} />} label="LINE Bot 管理" collapsed={collapsed} />
             </>
           )}
         </nav>
