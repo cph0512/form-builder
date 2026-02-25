@@ -7,6 +7,16 @@ const { authenticateToken, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
 
+// 每個角色的預設功能權限
+const ROLE_DEFAULT_FEATURES = {
+  super_admin: ['form_create', 'form_status', 'submissions', 'submissions_export', 'users_manage', 'dept_manage', 'crm_connections', 'crm_mapping', 'crm_jobs'],
+  dept_admin:  ['form_create', 'submissions', 'submissions_export', 'users_manage', 'crm_connections', 'crm_mapping', 'crm_jobs'],
+  manager:     ['submissions'],
+  staff:       [],
+};
+const getEffectivePerms = (role, explicit) =>
+  [...new Set([...(ROLE_DEFAULT_FEATURES[role] || []), ...explicit])];
+
 // POST /api/auth/login
 router.post('/login', [
   body('email').isEmail().withMessage('請輸入有效的 Email'),
@@ -35,9 +45,17 @@ router.post('/login', [
       return res.status(401).json({ error: 'Email 或密碼錯誤' });
     }
 
+    // 查詢使用者的額外權限
+    const permsResult = await pool.query(
+      'SELECT feature FROM user_permissions WHERE user_id = $1',
+      [user.id]
+    );
+    const explicit = permsResult.rows.map(r => r.feature);
+    const permissions = getEffectivePerms(user.role, explicit);
+
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, name: user.name,
-        department_id: user.department_id },
+        department_id: user.department_id, permissions },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     );
@@ -50,6 +68,7 @@ router.post('/login', [
         email: user.email,
         role: user.role,
         department: user.dept_name,
+        permissions,
       }
     });
   } catch (err) {
@@ -177,6 +196,47 @@ router.put('/users/:id/password', authenticateToken, requireRole('super_admin'),
     res.json({ message: '密碼已重設' });
   } catch (err) {
     res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// GET /api/auth/users/:id/permissions - 取得使用者的功能權限
+router.get('/users/:id/permissions', authenticateToken, requireRole('super_admin', 'dept_admin'), async (req, res) => {
+  try {
+    const userRes = await pool.query('SELECT role FROM users WHERE id = $1', [req.params.id]);
+    if (!userRes.rows[0]) return res.status(404).json({ error: '使用者不存在' });
+
+    const role = userRes.rows[0].role;
+    const permsRes = await pool.query('SELECT feature FROM user_permissions WHERE user_id = $1', [req.params.id]);
+    const explicit = permsRes.rows.map(r => r.feature);
+    const roleDefaults = ROLE_DEFAULT_FEATURES[role] || [];
+    const effective = getEffectivePerms(role, explicit);
+
+    res.json({ roleDefaults, explicit, effective });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// PUT /api/auth/users/:id/permissions - 更新使用者的額外功能權限（僅 super_admin）
+router.put('/users/:id/permissions', authenticateToken, requireRole('super_admin'), async (req, res) => {
+  const { features = [] } = req.body;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM user_permissions WHERE user_id = $1', [req.params.id]);
+    for (const feature of features) {
+      await client.query(
+        'INSERT INTO user_permissions (user_id, feature, granted_by) VALUES ($1, $2, $3)',
+        [req.params.id, feature, req.user.id]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ message: '權限已更新', count: features.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
 });
 

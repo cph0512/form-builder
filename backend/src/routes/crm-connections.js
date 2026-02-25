@@ -4,7 +4,7 @@
  */
 const express = require('express');
 const pool = require('../models/db');
-const { requireRole } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/auth');
 const { logAction, getIp } = require('../middleware/audit');
 
 const router = express.Router();
@@ -29,7 +29,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/crm/connections/inspect-selector
 // 用 Playwright 截圖並高亮顯示命中的 CSS Selector 元素
-router.post('/inspect-selector', requireRole('super_admin'), async (req, res) => {
+router.post('/inspect-selector', requirePermission('crm_connections'), async (req, res) => {
   const { url, selector } = req.body;
   if (!url)      return res.status(400).json({ error: '請提供目標 URL' });
   if (!selector) return res.status(400).json({ error: '請提供 CSS Selector' });
@@ -119,7 +119,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/crm/connections - 新增 CRM 連線（管理員）
-router.post('/', requireRole('super_admin'), async (req, res) => {
+router.post('/', requirePermission('crm_connections'), async (req, res) => {
   const { name, type = 'rpa_web', url, config = {} } = req.body;
   if (!name) return res.status(400).json({ error: '請輸入連線名稱' });
 
@@ -138,7 +138,7 @@ router.post('/', requireRole('super_admin'), async (req, res) => {
 });
 
 // PUT /api/crm/connections/:id - 更新 CRM 連線
-router.put('/:id', requireRole('super_admin'), async (req, res) => {
+router.put('/:id', requirePermission('crm_connections'), async (req, res) => {
   const { name, type, url, config, is_active } = req.body;
 
   try {
@@ -163,7 +163,7 @@ router.put('/:id', requireRole('super_admin'), async (req, res) => {
 });
 
 // DELETE /api/crm/connections/:id
-router.delete('/:id', requireRole('super_admin'), async (req, res) => {
+router.delete('/:id', requirePermission('crm_connections'), async (req, res) => {
   try {
     await pool.query('UPDATE crm_connections SET is_active=false WHERE id=$1', [req.params.id]);
     logAction(req.user.id, 'crm.connection.delete', 'crm_connection', req.params.id, {}, getIp(req));
@@ -174,7 +174,7 @@ router.delete('/:id', requireRole('super_admin'), async (req, res) => {
 });
 
 // POST /api/crm/connections/:id/test - 測試連線
-router.post('/:id/test', requireRole('super_admin'), async (req, res) => {
+router.post('/:id/test', requirePermission('crm_connections'), async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM crm_connections WHERE id=$1', [req.params.id]);
     if (!result.rows[0]) return res.status(404).json({ error: '連線不存在' });

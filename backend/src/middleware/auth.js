@@ -27,4 +27,14 @@ const requireRole = (...roles) => {
   };
 };
 
-module.exports = { authenticateToken, requireRole };
+// 功能權限中介軟體（super_admin 永遠通過，或 JWT permissions 包含該功能）
+const requirePermission = (feature) => {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: '未授權' });
+    if (req.user.role === 'super_admin') return next();
+    if ((req.user.permissions || []).includes(feature)) return next();
+    return res.status(403).json({ error: '權限不足' });
+  };
+};
+
+module.exports = { authenticateToken, requireRole, requirePermission };

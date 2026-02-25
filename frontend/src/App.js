@@ -14,10 +14,11 @@ import CrmMappingPage from './pages/CrmMappingPage';
 import CrmJobsPage from './pages/CrmJobsPage';
 import Layout from './components/Layout';
 
-const ProtectedRoute = ({ children, roles }) => {
-  const { token, user } = useAuthStore();
+const ProtectedRoute = ({ children, roles, permission }) => {
+  const { token, user, hasPermission } = useAuthStore();
   if (!token) return <Navigate to="/login" replace />;
   if (roles && !roles.includes(user?.role)) return <Navigate to="/" replace />;
+  if (permission && !hasPermission(permission)) return <Navigate to="/" replace />;
   return children;
 };
 
@@ -54,17 +55,17 @@ export default function App() {
             </ProtectedRoute>
           } />
           <Route path="crm/connections" element={
-            <ProtectedRoute roles={['super_admin']}>
+            <ProtectedRoute permission="crm_connections">
               <CrmConnectionsPage />
             </ProtectedRoute>
           } />
           <Route path="crm/mapping" element={
-            <ProtectedRoute roles={['super_admin']}>
+            <ProtectedRoute permission="crm_mapping">
               <CrmMappingPage />
             </ProtectedRoute>
           } />
           <Route path="crm/jobs" element={
-            <ProtectedRoute roles={['super_admin']}>
+            <ProtectedRoute permission="crm_jobs">
               <CrmJobsPage />
             </ProtectedRoute>
           } />

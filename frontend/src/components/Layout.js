@@ -11,7 +11,7 @@ const ROLE_LABELS = {
 };
 
 export default function Layout() {
-  const { user, logout } = useAuthStore();
+  const { user, logout, hasPermission } = useAuthStore();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
@@ -58,12 +58,12 @@ export default function Layout() {
             </>
           )}
 
-          {user?.role === 'super_admin' && (
+          {(hasPermission('crm_connections') || hasPermission('crm_mapping') || hasPermission('crm_jobs')) && (
             <>
               {!collapsed ? <SectionLabel style={{ marginTop: 8 }}>CRM 整合</SectionLabel> : <Divider />}
-              <NavItem to="/crm/connections" icon={<Database size={18} />} label="CRM 連線" collapsed={collapsed} />
-              <NavItem to="/crm/mapping" icon={<ArrowLeftRight size={18} />} label="欄位對應" collapsed={collapsed} />
-              <NavItem to="/crm/jobs" icon={<Activity size={18} />} label="任務監控" collapsed={collapsed} />
+              {hasPermission('crm_connections') && <NavItem to="/crm/connections" icon={<Database size={18} />} label="CRM 連線" collapsed={collapsed} />}
+              {hasPermission('crm_mapping') && <NavItem to="/crm/mapping" icon={<ArrowLeftRight size={18} />} label="欄位對應" collapsed={collapsed} />}
+              {hasPermission('crm_jobs') && <NavItem to="/crm/jobs" icon={<Activity size={18} />} label="任務監控" collapsed={collapsed} />}
             </>
           )}
         </nav>

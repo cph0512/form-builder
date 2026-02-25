@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useUserStore, useDeptStore, useAuthStore } from '../store';
-import { PlusCircle, Edit2, KeyRound, ToggleLeft, ToggleRight, Users, X, Eye, EyeOff } from 'lucide-react';
+import { PlusCircle, Edit2, KeyRound, ToggleLeft, ToggleRight, Users, X, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const ROLE_LABELS = {
@@ -17,6 +18,24 @@ const ROLE_COLORS = {
   staff: { bg: '#f1f5f9', color: '#475569' },
 };
 
+const FEATURES_LIST = [
+  { key: 'form_create',        label: '新增/編輯表單',   group: '表單管理' },
+  { key: 'form_status',        label: '啟用/停用表單',   group: '表單管理' },
+  { key: 'submissions',        label: '查看提交記錄',    group: '提交記錄' },
+  { key: 'submissions_export', label: '匯出提交記錄',    group: '提交記錄' },
+  { key: 'users_manage',       label: '使用者管理',      group: '系統管理' },
+  { key: 'dept_manage',        label: '部門管理',        group: '系統管理' },
+  { key: 'crm_connections',    label: 'CRM 連線管理',    group: 'CRM 整合' },
+  { key: 'crm_mapping',        label: 'CRM 欄位對應',    group: 'CRM 整合' },
+  { key: 'crm_jobs',           label: 'CRM 任務監控',    group: 'CRM 整合' },
+];
+
+const FEATURE_GROUPS = FEATURES_LIST.reduce((acc, f) => {
+  if (!acc[f.group]) acc[f.group] = [];
+  acc[f.group].push(f);
+  return acc;
+}, {});
+
 const emptyForm = { name: '', email: '', password: '', role: 'staff', department_id: '' };
 
 export default function UsersPage() {
@@ -25,8 +44,9 @@ export default function UsersPage() {
   const { departments, fetchDepartments } = useDeptStore();
 
   const [showModal, setShowModal] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);   // null = 新增模式
-  const [showPwdModal, setShowPwdModal] = useState(null); // user id
+  const [editingUser, setEditingUser] = useState(null);
+  const [showPwdModal, setShowPwdModal] = useState(null);
+  const [showPermsModal, setShowPermsModal] = useState(null); // user object
   const [form, setForm] = useState(emptyForm);
   const [newPwd, setNewPwd] = useState('');
   const [showPwd, setShowPwd] = useState(false);
@@ -197,6 +217,11 @@ export default function UsersPage() {
                         <Edit2 size={13} />
                       </button>
                       {isSuperAdmin && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => setShowPermsModal(u)} title="設定功能權限" style={{ color: '#1a56db' }}>
+                          <ShieldCheck size={13} />
+                        </button>
+                      )}
+                      {isSuperAdmin && (
                         <button className="btn btn-secondary btn-sm" onClick={() => { setShowPwdModal(u.id); setNewPwd(''); }} title="重設密碼">
                           <KeyRound size={13} />
                         </button>
@@ -219,7 +244,7 @@ export default function UsersPage() {
         </div>
       )}
 
-      {/* 新增/編輯 Modal */}
+      {/* Create/Edit Modal */}
       {showModal && (
         <ModalOverlay onClose={() => setShowModal(false)}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 24 }}>
@@ -273,7 +298,7 @@ export default function UsersPage() {
         </ModalOverlay>
       )}
 
-      {/* 重設密碼 Modal */}
+      {/* Reset Password Modal */}
       {showPwdModal && (
         <ModalOverlay onClose={() => setShowPwdModal(null)}>
           <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>重設密碼</h2>
@@ -298,15 +323,126 @@ export default function UsersPage() {
           </form>
         </ModalOverlay>
       )}
+
+      {/* Permissions Modal */}
+      {showPermsModal && (
+        <PermissionsModal
+          targetUser={showPermsModal}
+          onClose={() => setShowPermsModal(null)}
+        />
+      )}
     </div>
   );
 }
 
-function ModalOverlay({ children, onClose }) {
+// ── 設定功能權限 Modal ───────────────────────────────────────────
+function PermissionsModal({ targetUser, onClose }) {
+  const [roleDefaults, setRoleDefaults] = useState([]);
+  const [checked, setChecked] = useState(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    axios.get(`/api/auth/users/${targetUser.id}/permissions`)
+      .then(res => {
+        setRoleDefaults(res.data.roleDefaults);
+        setChecked(new Set(res.data.effective));
+        setLoading(false);
+      })
+      .catch(() => { toast.error('載入權限失敗'); onClose(); });
+  }, [targetUser.id]);
+
+  const toggle = (key) => {
+    if (roleDefaults.includes(key)) return;
+    setChecked(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    // 只傳送「超出角色預設」的額外權限
+    const explicit = [...checked].filter(k => !roleDefaults.includes(k));
+    try {
+      await axios.put(`/api/auth/users/${targetUser.id}/permissions`, { features: explicit });
+      toast.success('功能權限已更新，使用者重新登入後生效');
+      onClose();
+    } catch {
+      toast.error('儲存失敗');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ModalOverlay onClose={onClose} wide>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+        <ShieldCheck size={20} color="#1a56db" />
+        <h2 style={{ fontSize: 18, fontWeight: 700 }}>設定功能權限</h2>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 20 }}>
+        <strong>{targetUser.name}</strong>（{ROLE_LABELS[targetUser.role]}）
+        ｜灰色為角色預設，無法取消；可勾選額外開放的功能
+      </p>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-3)' }}>載入中...</div>
+      ) : (
+        <>
+          {Object.entries(FEATURE_GROUPS).map(([group, features]) => (
+            <div key={group} style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>{group}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {features.map(f => {
+                  const isDefault = roleDefaults.includes(f.key);
+                  const isChecked = checked.has(f.key);
+                  return (
+                    <label key={f.key} onClick={() => toggle(f.key)} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
+                      border: `1px solid ${isChecked ? '#1a56db' : 'var(--border)'}`,
+                      borderRadius: 8, cursor: isDefault ? 'not-allowed' : 'pointer',
+                      background: isChecked ? (isDefault ? '#f0f4ff' : '#eff6ff') : '#fff',
+                      opacity: isDefault ? 0.7 : 1,
+                      transition: 'all 0.15s',
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggle(f.key)}
+                        disabled={isDefault}
+                        style={{ accentColor: '#1a56db' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{f.label}</div>
+                        {isDefault && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 1 }}>角色預設</div>}
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button className="btn btn-secondary" onClick={onClose}>取消</button>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? '儲存中...' : '儲存權限'}
+            </button>
+          </div>
+        </>
+      )}
+    </ModalOverlay>
+  );
+}
+
+function ModalOverlay({ children, onClose, wide }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="card" style={{ width: 480, padding: 32, position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card" style={{ width: wide ? 640 : 480, padding: 32, position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
         <button onClick={onClose} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)' }}>
           <X size={20} />
         </button>

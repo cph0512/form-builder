@@ -31,10 +31,17 @@ const storedToken = localStorage.getItem('token');
 const storedUser = localStorage.getItem('user');
 if (storedToken) setAuthHeader(storedToken);
 
-export const useAuthStore = create((set) => ({
+export const useAuthStore = create((set, get) => ({
   token: storedToken || null,
   user: storedUser ? JSON.parse(storedUser) : null,
   isLoading: false,
+
+  hasPermission: (feature) => {
+    const { user } = get();
+    if (!user) return false;
+    if (user.role === 'super_admin') return true;
+    return (user.permissions || []).includes(feature);
+  },
 
   login: async (email, password) => {
     set({ isLoading: true });

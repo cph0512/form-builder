@@ -10,8 +10,8 @@ export default function CrmMappingPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const connIdFromUrl = searchParams.get('conn') || '';
-  const { user } = useAuthStore();
-  const isSuperAdmin = user?.role === 'super_admin';
+  const { hasPermission } = useAuthStore();
+  const isSuperAdmin = hasPermission('crm_mapping');
 
   const [forms, setForms] = useState([]);
   const [connections, setConnections] = useState([]);

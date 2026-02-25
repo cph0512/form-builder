@@ -41,7 +41,8 @@ export default function CrmConnectionsPage() {
   const [testResults, setTestResults] = useState({});
   const [showPwd, setShowPwd] = useState(false);
 
-  const isAdmin = user?.role === 'super_admin';
+  const { hasPermission } = useAuthStore();
+  const isAdmin = hasPermission('crm_connections');
   const inspector = useSelectorInspector();
 
   useEffect(() => { fetchConnections(); }, []);
