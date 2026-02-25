@@ -274,7 +274,7 @@ async function chatGeminiSimple(messages, useTools, systemPrompt) {
   const genAI = getGemini();
   if (!genAI) return null;
 
-  const modelConfig = { model: 'gemini-2.0-flash-lite' };
+  const modelConfig = { model: 'gemini-2.5-flash' };
   if (useTools) {
     modelConfig.tools = [{ functionDeclarations: GEMINI_TOOLS }];
   }
