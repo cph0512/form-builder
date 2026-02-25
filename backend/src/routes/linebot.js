@@ -8,6 +8,7 @@ const crypto = require('crypto');
 const pool = require('../models/db');
 const { authenticateToken, requirePermission } = require('../middleware/auth');
 const linebot = require('../services/linebotService');
+const aiService = require('../services/aiService');
 
 const router = express.Router();
 
@@ -153,12 +154,10 @@ async function handleEvent(event) {
       return;
     }
 
-    // /記錄 — 彙整今日對話，標記為待上傳
+    // /記錄 — 彙整今日對話，標記為待上傳 + AI 摘要
     if (text === '/記錄') {
-      // 找出今日 session
       const conv = await getOrCreateConversation(sourceType, sourceId);
 
-      // 找傳訊者的平台 user（若已綁定）
       const { rows: bindRows } = await pool.query(
         'SELECT platform_user_id FROM linebot_bindings WHERE line_user_id=$1 AND is_active=true',
         [senderId]
@@ -173,9 +172,23 @@ async function handleEvent(event) {
       );
 
       const msgCount = Array.isArray(conv.messages) ? conv.messages.length : 0;
-      await linebot.replyMessage(event.replyToken,
-        `📝 已記錄今日對話（${msgCount} 則訊息），請到後台管理系統確認後上傳 CRM。`
-      );
+      let replyText = `📝 已記錄今日對話（${msgCount} 則訊息），請到後台管理系統確認後上傳 CRM。`;
+
+      // AI 摘要（非同步，若失敗不影響主流程）
+      try {
+        const summary = await aiService.summarize(conv.messages || []);
+        if (summary) {
+          await pool.query(
+            'UPDATE linebot_conversations SET ai_summary=$1 WHERE id=$2',
+            [summary, conv.id]
+          );
+          replyText += `\n\n📋 AI 摘要：\n${summary}`;
+        }
+      } catch (err) {
+        console.error('[LineBot] AI 摘要失敗:', err.message);
+      }
+
+      await linebot.replyMessage(event.replyToken, replyText);
       return;
     }
 
@@ -192,7 +205,133 @@ async function handleEvent(event) {
        WHERE id=$2`,
       [JSON.stringify([newMsg]), conv.id]
     );
+
+    // ── AI 觸發檢測（@mention 或文字前綴）
+    const AI_TRIGGER = process.env.AI_TRIGGER_PREFIX || '@助理';
+    const mentionees = event.message.mention?.mentionees || [];
+    const botUserId = await linebot.getBotUserId();
+
+    let aiQuery = null;
+    const botMention = mentionees.find(m => m.userId === botUserId);
+    if (botMention) {
+      // LINE @mention：移除 @Bot 部分，剩餘文字作為 query
+      aiQuery = (text.slice(0, botMention.index) + text.slice(botMention.index + botMention.length)).trim();
+    } else if (text.startsWith(AI_TRIGGER)) {
+      // 文字前綴 @助理
+      aiQuery = text.slice(AI_TRIGGER.length).trim();
+    }
+
+    if (aiQuery !== null) {
+      await handleAIQuery(event, conv, aiQuery || '你好', senderId);
+    }
   }
+}
+
+// ─── AI 查詢處理 ──────────────────────────────────────────────────────────────
+
+async function handleAIQuery(event, conv, query, senderId) {
+  // 查詢發訊者的 platform_user_id（tool call 授權用）
+  const { rows: bindRows } = await pool.query(
+    'SELECT platform_user_id FROM linebot_bindings WHERE line_user_id=$1 AND is_active=true',
+    [senderId]
+  );
+  const platformUserId = bindRows[0]?.platform_user_id || null;
+
+  // 建立對話歷史（今日最近 20 則訊息作為上下文）
+  const history = (conv.messages || []).slice(-20).map(m => ({
+    role: 'user',
+    content: `[對話] ${m.text}`,
+  }));
+  // 加入本次問題
+  history.push({ role: 'user', content: query });
+
+  try {
+    // 第一次呼叫 AI（可能回傳 tool call）
+    const result = await aiService.chat(history, true, aiService.DEFAULT_SYSTEM_PROMPT);
+
+    if (!result) {
+      await linebot.replyMessage(event.replyToken, '⚠️ AI 助理尚未設定，請聯繫管理員。');
+      return;
+    }
+
+    // 若 AI 要求呼叫工具
+    if (result.toolCalls?.length > 0) {
+      const tc = result.toolCalls[0]; // 一次處理一個 tool
+      const toolResult = await executeTool(tc.name, tc.input, platformUserId);
+
+      // 把工具結果回傳 AI 取得最終回覆
+      const followUp = [
+        ...history,
+        { role: 'assistant', content: result.text || '' },
+        { role: 'tool', tool_call_id: tc.id, content: JSON.stringify(toolResult) },
+      ];
+      const finalResult = await aiService.chat(followUp, false, aiService.DEFAULT_SYSTEM_PROMPT);
+      await linebot.replyMessage(event.replyToken, finalResult?.text || '✅ 已處理完成');
+      return;
+    }
+
+    // 一般文字回覆
+    await linebot.replyMessage(event.replyToken, result.text || '抱歉，我無法回答這個問題。');
+
+  } catch (err) {
+    console.error('[LineBot] AI 查詢失敗:', err.message);
+    await linebot.replyMessage(event.replyToken, '⚠️ AI 助理暫時無法使用，請稍後再試。');
+  }
+}
+
+// ─── Tool 執行 ────────────────────────────────────────────────────────────────
+
+async function executeTool(name, input, platformUserId) {
+  if (name === 'search_form_submissions') {
+    try {
+      const limit = Math.min(input.limit || 5, 10);
+      const { rows } = await pool.query(
+        `SELECT fs.id, f.title as form_title, u.name as submitter_name,
+                fs.data, fs.submitted_at, fs.crm_sync_status
+         FROM form_submissions fs
+         JOIN forms f ON fs.form_id = f.id
+         LEFT JOIN users u ON fs.submitted_by = u.id
+         WHERE fs.data::text ILIKE $1
+         ORDER BY fs.submitted_at DESC
+         LIMIT $2`,
+        [`%${input.keyword}%`, limit]
+      );
+      if (rows.length === 0) return `找不到包含「${input.keyword}」的表單資料。`;
+      return rows.map(r => ({
+        form_title: r.form_title,
+        submitter: r.submitter_name,
+        submitted_at: r.submitted_at,
+        data: r.data,
+      }));
+    } catch (err) {
+      return `查詢失敗：${err.message}`;
+    }
+  }
+
+  if (name === 'create_reminder') {
+    if (!platformUserId) {
+      return '請先綁定帳號才能設定提醒。請傳送 /綁定 [碼] 完成綁定。';
+    }
+    try {
+      await pool.query(
+        `INSERT INTO linebot_reminders
+         (platform_user_id, type, label, trigger_at, repeat_type, message_template)
+         VALUES ($1, 'custom', $2, $3, $4, $5)`,
+        [
+          platformUserId,
+          input.label,
+          input.trigger_at,
+          input.repeat_type || 'once',
+          input.message_template,
+        ]
+      );
+      return `✅ 提醒已建立：${input.label}，時間：${input.trigger_at}`;
+    } catch (err) {
+      return `建立提醒失敗：${err.message}`;
+    }
+  }
+
+  return `未知的工具：${name}`;
 }
 
 // ─── 統計 ────────────────────────────────────────────────────────

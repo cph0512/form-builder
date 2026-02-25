@@ -92,4 +92,25 @@ async function getGroupMemberProfile(groupId, userId) {
   return await client.getGroupMemberProfile(groupId, userId);
 }
 
-module.exports = { verifySignature, sendPushMessage, replyMessage, getUserProfile, getGroupMemberProfile };
+/**
+ * 取得 Bot 自己的 LINE userId（用於 @mention 偵測）
+ * 結果快取，只呼叫 API 一次
+ */
+let _botUserId = null;
+async function getBotUserId() {
+  if (_botUserId) return _botUserId;
+  if (isMockMode) {
+    _botUserId = 'U_MOCK_BOT_ID';
+    return _botUserId;
+  }
+  try {
+    const info = await client.getBotInfo();
+    _botUserId = info.userId;
+    return _botUserId;
+  } catch (err) {
+    console.error('[LineBot] 無法取得 Bot userId:', err.message);
+    return null;
+  }
+}
+
+module.exports = { verifySignature, sendPushMessage, replyMessage, getUserProfile, getGroupMemberProfile, getBotUserId };

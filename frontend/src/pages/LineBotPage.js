@@ -360,6 +360,15 @@ function ConversationsTab() {
                   {expandedId === c.id && detail[c.id] && (
                     <tr>
                       <td colSpan={6} style={{ background: '#f8fafc', padding: '12px 20px' }}>
+                        {/* AI 摘要區塊 */}
+                        {detail[c.id].ai_summary && (
+                          <div style={{ marginBottom: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 14px' }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1', marginBottom: 6 }}>🤖 AI 摘要</div>
+                            <div style={{ fontSize: 13, color: '#0f172a', whiteSpace: 'pre-line', lineHeight: 1.6 }}>
+                              {detail[c.id].ai_summary}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8, fontWeight: 600 }}>對話內容</div>
                         {(detail[c.id].messages || []).length === 0 ? (
                           <div style={{ color: '#94a3b8', fontSize: 13 }}>無訊息記錄</div>
