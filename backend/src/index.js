@@ -18,6 +18,7 @@ const jobQueue = require('./services/jobQueue');
 const linebotCron = require('./services/linebotCron');
 
 const app = express();
+app.set('trust proxy', 1); // Railway / Vercel 反向代理設定
 const PORT = process.env.PORT || 3001;
 
 const loginLimiter = rateLimit({
