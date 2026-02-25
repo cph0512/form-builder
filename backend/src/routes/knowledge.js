@@ -71,7 +71,8 @@ router.get('/', authenticateToken, requirePermission('linebot_manage'), async (r
     );
     res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: '伺服器錯誤' });
+    console.error('[knowledge GET]', err.message);
+    res.status(500).json({ error: err.message || '伺服器錯誤' });
   }
 });
 

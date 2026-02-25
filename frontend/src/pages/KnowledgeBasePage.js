@@ -58,6 +58,7 @@ function ListTab() {
   const [items, setItems]       = useState([]);
   const [loading, setLoading]   = useState(true);
   const [loadError, setLoadError] = useState('');
+  const [loadStatus, setLoadStatus] = useState(0);
   const [q, setQ]               = useState('');
   const [catFilter, setCat]     = useState('');
   const [expanded, setExpanded] = useState(null);
@@ -68,13 +69,16 @@ function ListTab() {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError('');
+    setLoadStatus(0);
     try {
       const { data } = await axios.get('/api/knowledge', { params: { q, category: catFilter } });
       setItems(data);
     } catch (err) {
       const msg = err.response?.data?.error || err.message || '未知錯誤';
+      const status = err.response?.status || 0;
       setLoadError(msg);
-      console.error('[知識庫] 載入失敗:', msg, err.response?.status);
+      setLoadStatus(status);
+      console.error('[知識庫] 載入失敗:', msg, status);
     } finally { setLoading(false); }
   }, [q, catFilter]);
 
@@ -127,9 +131,9 @@ function ListTab() {
           <div>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#dc2626' }}>載入失敗</div>
             <div style={{ fontSize: 12, color: '#ef4444', marginTop: 2 }}>{loadError}</div>
-            {loadError.includes('does not exist') && (
-              <div style={{ fontSize: 12, color: '#64748b', marginTop: 6 }}>
-                請先在 Supabase SQL Editor 執行 migration 008（建立 knowledge_base 資料表）
+            {(loadError.includes('does not exist') || loadStatus === 500) && (
+              <div style={{ fontSize: 12, color: '#64748b', marginTop: 6, lineHeight: 1.6 }}>
+                💡 請先在 <strong>Supabase SQL Editor</strong> 執行 <strong>migration 008</strong>（建立 knowledge_base 資料表），再點「重試」
               </div>
             )}
           </div>
