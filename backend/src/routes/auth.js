@@ -240,4 +240,30 @@ router.put('/users/:id/permissions', authenticateToken, requireRole('super_admin
   }
 });
 
+// GET /api/auth/me/ical-token — 取得目前的 iCal 訂閱 token
+router.get('/me/ical-token', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT ical_token FROM users WHERE id=$1',
+      [req.user.id]
+    );
+    res.json({ token: rows[0]?.ical_token || null });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// POST /api/auth/me/ical-token — 重新產生 token（舊訂閱連結失效）
+router.post('/me/ical-token', authenticateToken, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'UPDATE users SET ical_token=gen_random_uuid() WHERE id=$1 RETURNING ical_token',
+      [req.user.id]
+    );
+    res.json({ token: rows[0]?.ical_token });
+  } catch (err) {
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
 module.exports = router;

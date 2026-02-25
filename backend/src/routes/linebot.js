@@ -518,6 +518,68 @@ router.delete('/reminders/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// ─── iCal 訂閱（公開，無需 JWT）────────────────────────────────────
+
+router.get('/reminders/ical/:token', async (req, res) => {
+  try {
+    const { rows: userRows } = await pool.query(
+      'SELECT id, name FROM users WHERE ical_token=$1',
+      [req.params.token]
+    );
+    if (!userRows[0]) return res.status(404).send('Token 無效');
+    const user = userRows[0];
+
+    const { rows: reminders } = await pool.query(
+      `SELECT * FROM linebot_reminders
+       WHERE platform_user_id=$1
+         AND trigger_at >= NOW() - INTERVAL '30 days'
+       ORDER BY trigger_at ASC`,
+      [user.id]
+    );
+
+    const ical = require('ical-generator');
+    const cal = ical.default({
+      name: `${user.name} 的業務提醒`,
+      timezone: 'Asia/Taipei',
+      prodId: { company: '智慧表單 CRM', product: 'LineBot Reminders' },
+    });
+
+    const TYPE_LABEL = {
+      birthday:   '🎂 生日提醒',
+      test_drive: '🚗 試駕提醒',
+      follow_up:  '📞 跟進提醒',
+      contract:   '📄 合約到期提醒',
+      custom:     '📌 自訂提醒',
+    };
+    const REPEAT_FREQ = { weekly: 'WEEKLY', monthly: 'MONTHLY', yearly: 'YEARLY' };
+
+    for (const r of reminders) {
+      const start = new Date(r.trigger_at);
+      const end   = new Date(start.getTime() + 30 * 60 * 1000);
+      const eventData = {
+        id:          r.id,
+        start,
+        end,
+        summary:     `${TYPE_LABEL[r.type] || r.type}${r.label ? '：' + r.label : ''}`,
+        description: r.message_template,
+        timezone:    'Asia/Taipei',
+      };
+      if (r.repeat_type && r.repeat_type !== 'once' && REPEAT_FREQ[r.repeat_type]) {
+        eventData.repeating = { freq: REPEAT_FREQ[r.repeat_type] };
+      }
+      cal.createEvent(eventData);
+    }
+
+    res.set('Content-Type', 'text/calendar; charset=utf-8');
+    res.set('Content-Disposition', 'inline; filename="reminders.ics"');
+    res.set('Cache-Control', 'no-cache, no-store');
+    res.send(cal.toString());
+  } catch (err) {
+    console.error('[iCal]', err);
+    res.status(500).send('伺服器錯誤');
+  }
+});
+
 // ─── 訊息範本 ─────────────────────────────────────────────────────
 
 router.get('/templates', authenticateToken, requirePermission('linebot_manage'), async (req, res) => {

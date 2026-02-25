@@ -13,6 +13,7 @@ import CrmConnectionsPage from './pages/CrmConnectionsPage';
 import CrmMappingPage from './pages/CrmMappingPage';
 import CrmJobsPage from './pages/CrmJobsPage';
 import LineBotPage from './pages/LineBotPage';
+import CalendarPage from './pages/CalendarPage';
 import Layout from './components/Layout';
 
 const ProtectedRoute = ({ children, roles, permission }) => {
@@ -73,6 +74,11 @@ export default function App() {
           <Route path="linebot" element={
             <ProtectedRoute permission="linebot_manage">
               <LineBotPage />
+            </ProtectedRoute>
+          } />
+          <Route path="calendar" element={
+            <ProtectedRoute permission="linebot_manage">
+              <CalendarPage />
             </ProtectedRoute>
           } />
         </Route>

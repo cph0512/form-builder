@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store';
-import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity, MessageSquare } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity, MessageSquare, CalendarDays } from 'lucide-react';
 
 const ROLE_LABELS = {
   super_admin: '超級管理員',
@@ -71,6 +71,7 @@ export default function Layout() {
             <>
               {!collapsed ? <SectionLabel style={{ marginTop: 8 }}>LINE Bot</SectionLabel> : <Divider />}
               <NavItem to="/linebot" icon={<MessageSquare size={18} />} label="LINE Bot 管理" collapsed={collapsed} />
+              <NavItem to="/calendar" icon={<CalendarDays size={18} />} label="行事曆" collapsed={collapsed} />
             </>
           )}
         </nav>
