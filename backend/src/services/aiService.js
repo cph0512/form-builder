@@ -72,6 +72,21 @@ const OPENAI_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'search_knowledge_base',
+      description: '搜尋業務知識庫，找尋產品資訊、FAQ、價格、政策說明等。回答業務相關問題時請優先使用此工具。',
+      parameters: {
+        type: 'object',
+        properties: {
+          keyword:  { type: 'string', description: '搜尋關鍵字，例如產品名稱、問題關鍵字' },
+          category: { type: 'string', description: '分類過濾：product/faq/policy/price/general，可不填' },
+        },
+        required: ['keyword'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'search_form_submissions',
       description: '搜尋客戶填寫的表單資料，可依關鍵字或客戶名稱查詢',
       parameters: {
@@ -106,6 +121,18 @@ const OPENAI_TOOLS = [
 // Anthropic 格式
 const ANTHROPIC_TOOLS = [
   {
+    name: 'search_knowledge_base',
+    description: '搜尋業務知識庫，找尋產品資訊、FAQ、價格、政策說明等。回答業務相關問題時請優先使用此工具。',
+    input_schema: {
+      type: 'object',
+      properties: {
+        keyword:  { type: 'string', description: '搜尋關鍵字，例如產品名稱、問題關鍵字' },
+        category: { type: 'string', description: '分類過濾：product/faq/policy/price/general，可不填' },
+      },
+      required: ['keyword'],
+    },
+  },
+  {
     name: 'search_form_submissions',
     description: '搜尋客戶填寫的表單資料，可依關鍵字或客戶名稱查詢',
     input_schema: {
@@ -135,6 +162,18 @@ const ANTHROPIC_TOOLS = [
 
 // Gemini 格式（type 用大寫）
 const GEMINI_TOOLS = [
+  {
+    name: 'search_knowledge_base',
+    description: '搜尋業務知識庫，找尋產品資訊、FAQ、價格、政策說明等。回答業務相關問題時請優先使用此工具。',
+    parameters: {
+      type: 'OBJECT',
+      properties: {
+        keyword:  { type: 'STRING', description: '搜尋關鍵字，例如產品名稱、問題關鍵字' },
+        category: { type: 'STRING', description: '分類過濾：product/faq/policy/price/general，可不填' },
+      },
+      required: ['keyword'],
+    },
+  },
   {
     name: 'search_form_submissions',
     description: '搜尋客戶填寫的表單資料，可依關鍵字或客戶名稱查詢',
@@ -357,11 +396,48 @@ async function summarize(lineMessages) {
   return result?.text || null;
 }
 
+// ─── 圖片解析（多模態，依 AI_PROVIDER 決定引擎）──────────────────────────────
+
+/**
+ * 解析圖片內容（產品表格、文字等），回傳整理好的文字
+ * @param {string} base64   - 圖片的 base64 字串
+ * @param {string} mimeType - 例如 'image/jpeg'、'image/png'
+ * @returns {string|null}
+ */
+async function parseImage(base64, mimeType) {
+  const provider = getProvider();
+  try {
+    if (provider === 'gemini') return await parseImageGemini(base64, mimeType);
+    if (provider === 'openai') return await parseImageOpenAI(base64, mimeType); // 預留
+    if (provider === 'claude') return await parseImageClaude(base64, mimeType); // 預留
+    return null;
+  } catch (err) {
+    console.error('[AI Service] parseImage 錯誤:', err.message);
+    return null;
+  }
+}
+
+async function parseImageGemini(base64, mimeType) {
+  const genAI = getGemini();
+  if (!genAI) return null;
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  const result = await model.generateContent([
+    '請將這張圖片中的所有文字、表格、產品資訊整理成清楚的知識條目，使用繁體中文，格式：先寫標題，再寫詳細內容。',
+    { inlineData: { data: base64, mimeType } },
+  ]);
+  return result.response.text();
+}
+
+// 預留框架（未來補實作）
+async function parseImageOpenAI(base64, mimeType) { /* TODO: GPT-4o Vision */ return null; }
+async function parseImageClaude(base64, mimeType) { /* TODO: Claude Vision */ return null; }
+
 // ─── 公開介面 ─────────────────────────────────────────────────────────────────
 
 module.exports = {
   chat,
   summarize,
+  parseImage,
   OPENAI_TOOLS,
   ANTHROPIC_TOOLS,
   GEMINI_TOOLS,

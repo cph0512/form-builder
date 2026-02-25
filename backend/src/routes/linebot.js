@@ -282,6 +282,30 @@ async function handleAIQuery(event, conv, query, senderId) {
 // ─── Tool 執行 ────────────────────────────────────────────────────────────────
 
 async function executeTool(name, input, platformUserId) {
+  if (name === 'search_knowledge_base') {
+    try {
+      const keyword = input.keyword || '';
+      const params = [`%${keyword}%`];
+      let catClause = '';
+      if (input.category) {
+        params.push(input.category);
+        catClause = `AND category=$${params.length}`;
+      }
+      const { rows } = await pool.query(
+        `SELECT title, content, category FROM knowledge_base
+         WHERE is_active=true
+           AND (title ILIKE $1 OR content ILIKE $1)
+           ${catClause}
+         ORDER BY created_at DESC LIMIT 3`,
+        params
+      );
+      if (rows.length === 0) return '知識庫中找不到相關資料，以下為 AI 自身知識的回答。';
+      return rows.map(r => `【${r.title}】\n${r.content}`).join('\n\n---\n\n');
+    } catch (err) {
+      return `知識庫搜尋失敗：${err.message}`;
+    }
+  }
+
   if (name === 'search_form_submissions') {
     try {
       const limit = Math.min(input.limit || 5, 10);

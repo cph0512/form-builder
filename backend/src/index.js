@@ -13,6 +13,7 @@ const crmConnectionRoutes = require('./routes/crm-connections');
 const crmMappingRoutes = require('./routes/crm-mappings');
 const crmJobRoutes = require('./routes/crm-jobs');
 const linebotRoutes = require('./routes/linebot');
+const knowledgeRoutes = require('./routes/knowledge');
 const { authenticateToken } = require('./middleware/auth');
 const jobQueue = require('./services/jobQueue');
 const linebotCron = require('./services/linebotCron');
@@ -71,6 +72,7 @@ app.use('/api/crm/connections', authenticateToken, crmConnectionRoutes);
 app.use('/api/crm/mappings', authenticateToken, crmMappingRoutes);
 app.use('/api/crm/jobs', authenticateToken, crmJobRoutes);
 app.use('/api/linebot', linebotRoutes);
+app.use('/api/knowledge', knowledgeRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
