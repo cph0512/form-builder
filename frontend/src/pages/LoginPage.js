@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuthStore } from '../store';
 import { FileText, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -58,6 +58,9 @@ export default function LoginPage() {
               {loading ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> 登入中...</> : '登入'}
             </button>
           </form>
+          <div style={{ marginTop: 16, textAlign: 'center' }}>
+            <Link to="/forgot-password" style={{ color: '#1a56db', fontSize: 13, textDecoration: 'none' }}>忘記密碼？</Link>
+          </div>
 
           <div style={{ marginTop: 20, padding: 12, background: 'var(--surface-2)', borderRadius: 8, fontSize: 13, color: 'var(--text-2)' }}>
             <strong>預設帳號：</strong>admin@company.com<br />

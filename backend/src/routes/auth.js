@@ -1,9 +1,11 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { body, validationResult } = require('express-validator');
 const pool = require('../models/db');
 const { authenticateToken, requireRole } = require('../middleware/auth');
+const { sendPasswordResetEmail } = require('../services/emailService');
 
 const router = express.Router();
 
@@ -237,6 +239,85 @@ router.put('/users/:id/permissions', authenticateToken, requireRole('super_admin
     throw e;
   } finally {
     client.release();
+  }
+});
+
+// POST /api/auth/forgot-password — 發送密碼重設信件
+router.post('/forgot-password', [
+  body('email').isEmail().withMessage('請輸入有效的 Email'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { email } = req.body;
+  // 固定回傳成功，避免帳號列舉攻擊
+  const SUCCESS_MSG = { message: '若此 Email 已註冊，您將收到密碼重設連結，請查收信箱' };
+
+  try {
+    const result = await pool.query(
+      'SELECT id, name FROM users WHERE email = $1 AND is_active = true',
+      [email]
+    );
+    const user = result.rows[0];
+    if (!user) return res.json(SUCCESS_MSG);
+
+    // 清除舊的未使用 token
+    await pool.query(
+      'DELETE FROM password_reset_tokens WHERE user_id = $1 AND used_at IS NULL',
+      [user.id]
+    );
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 分鐘
+
+    await pool.query(
+      'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, token, expiresAt]
+    );
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+    await sendPasswordResetEmail(email, user.name, resetLink);
+
+    res.json(SUCCESS_MSG);
+  } catch (err) {
+    console.error('忘記密碼錯誤:', err);
+    res.status(500).json({ error: '伺服器錯誤' });
+  }
+});
+
+// POST /api/auth/reset-password — 使用 token 重設密碼
+router.post('/reset-password', [
+  body('token').notEmpty().withMessage('缺少重設 token'),
+  body('password').isLength({ min: 6 }).withMessage('密碼至少 6 個字元'),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+  const { token, password } = req.body;
+  try {
+    const result = await pool.query(
+      `SELECT * FROM password_reset_tokens
+       WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL`,
+      [token]
+    );
+    const resetToken = result.rows[0];
+    if (!resetToken) return res.status(400).json({ error: '重設連結無效或已過期，請重新申請' });
+
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+      [hash, resetToken.user_id]
+    );
+    await pool.query(
+      'UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1',
+      [resetToken.id]
+    );
+
+    res.json({ message: '密碼已重設成功，請重新登入' });
+  } catch (err) {
+    console.error('重設密碼錯誤:', err);
+    res.status(500).json({ error: '伺服器錯誤' });
   }
 });
 
