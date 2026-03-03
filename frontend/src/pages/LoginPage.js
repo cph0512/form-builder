@@ -5,8 +5,8 @@ import { FileText, Loader } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@company.com');
-  const [password, setPassword] = useState('Admin@1234');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuthStore();
   const navigate = useNavigate();
@@ -62,10 +62,6 @@ export default function LoginPage() {
             <Link to="/forgot-password" style={{ color: '#1a56db', fontSize: 13, textDecoration: 'none' }}>忘記密碼？</Link>
           </div>
 
-          <div style={{ marginTop: 20, padding: 12, background: 'var(--surface-2)', borderRadius: 8, fontSize: 13, color: 'var(--text-2)' }}>
-            <strong>預設帳號：</strong>admin@company.com<br />
-            <strong>預設密碼：</strong>Admin@1234
-          </div>
         </div>
       </div>
 
