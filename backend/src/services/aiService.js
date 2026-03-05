@@ -432,12 +432,99 @@ async function parseImageGemini(base64, mimeType) {
 async function parseImageOpenAI(base64, mimeType) { /* TODO: GPT-4o Vision */ return null; }
 async function parseImageClaude(base64, mimeType) { /* TODO: Claude Vision */ return null; }
 
+// ─── 名片辨識（多模態，structured JSON output）──────────────────────────────
+
+const BUSINESS_CARD_PROMPT = `你是一個專業的名片辨識系統。請仔細分析這張名片圖片，提取所有可見的聯絡資訊。
+
+請以下面的 JSON 格式回傳結果，不要有多餘的文字說明：
+
+\`\`\`json
+{
+  "contact": {
+    "full_name": "完整姓名",
+    "first_name": "名",
+    "last_name": "姓",
+    "company": "公司名稱",
+    "job_title": "職稱",
+    "department": "部門（若有）",
+    "emails": [
+      { "value": "email@example.com", "label": "工作", "is_primary": true }
+    ],
+    "phones": [
+      { "value": "+886-2-1234-5678", "label": "公司電話", "is_primary": true },
+      { "value": "0912-345-678", "label": "手機", "is_primary": false }
+    ],
+    "address": "完整地址",
+    "website": "https://www.example.com",
+    "social_profiles": {
+      "linkedin": "",
+      "line_id": "",
+      "facebook": ""
+    }
+  },
+  "suggested_category": "客戶",
+  "confidence": 0.95,
+  "notes": "任何額外觀察"
+}
+\`\`\`
+
+重要規則：
+1. 姓名：中文名片姓在前名在後。英文名片 first_name 是 given name，last_name 是 family name。full_name 保留原始格式。
+2. 電話：保留名片上的原始格式。用 label 標記類型（公司電話、手機、傳真等）。
+3. confidence：0.0-1.0，反映辨識準確度。名片模糊或遮擋則降低。
+4. suggested_category：根據公司名稱和職稱推測，只能是：客戶、供應商、合作夥伴、同業、其他。
+5. 找不到的欄位設為空字串或空陣列，不要猜測。
+6. 保留名片上的原始語言，不要翻譯。
+
+請只回傳 JSON。`;
+
+/**
+ * 解析名片圖片，回傳結構化 JSON
+ * @param {string} base64   - 圖片 base64
+ * @param {string} mimeType - 例如 'image/jpeg'
+ * @returns {Object|null}    - { contact, suggested_category, confidence, notes }
+ */
+async function parseBusinessCard(base64, mimeType) {
+  const provider = getProvider();
+  try {
+    if (provider === 'gemini') return await parseBusinessCardGemini(base64, mimeType);
+    if (provider === 'openai') return await parseBusinessCardOpenAI(base64, mimeType);
+    if (provider === 'claude') return await parseBusinessCardClaude(base64, mimeType);
+    return null;
+  } catch (err) {
+    console.error('[AI Service] parseBusinessCard 錯誤:', err.message);
+    return null;
+  }
+}
+
+async function parseBusinessCardGemini(base64, mimeType) {
+  const genAI = getGemini();
+  if (!genAI) return null;
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+
+  const result = await model.generateContent([
+    BUSINESS_CARD_PROMPT,
+    { inlineData: { data: base64, mimeType } },
+  ]);
+
+  const text = result.response.text();
+  // 提取 JSON（處理 markdown code block）
+  const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) return null;
+  return JSON.parse(jsonMatch[1] || jsonMatch[0]);
+}
+
+// 預留框架
+async function parseBusinessCardOpenAI(base64, mimeType) { /* TODO */ return null; }
+async function parseBusinessCardClaude(base64, mimeType) { /* TODO */ return null; }
+
 // ─── 公開介面 ─────────────────────────────────────────────────────────────────
 
 module.exports = {
   chat,
   summarize,
   parseImage,
+  parseBusinessCard,
   OPENAI_TOOLS,
   ANTHROPIC_TOOLS,
   GEMINI_TOOLS,

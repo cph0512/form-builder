@@ -38,6 +38,13 @@ async function processJob(jobId) {
 
     if (!jobResult.rows[0]) throw new Error('Job not found in DB');
     job = jobResult.rows[0];
+
+    // 若為聯絡人來源，用 payload_data 作為 submission_data
+    if (job.source_type === 'contact' && job.payload_data) {
+      job.submission_data = typeof job.payload_data === 'string'
+        ? JSON.parse(job.payload_data)
+        : job.payload_data;
+    }
   } catch (err) {
     console.error(`[CRM] job ${jobId} 取得資料失敗：`, err.message);
     return;
@@ -46,13 +53,15 @@ async function processJob(jobId) {
   /* ── 2. 取得欄位對應 ── */
   let mappings = [];
   try {
-    const mapResult = await pool.query(
-      `SELECT mappings
-       FROM crm_field_mappings
-       WHERE form_id = $1 AND crm_connection_id = $2 AND is_active = true`,
-      [job.form_id, job.crm_connection_id]
-    );
-    mappings = mapResult.rows[0]?.mappings || [];
+    if (job.form_id) {
+      const mapResult = await pool.query(
+        `SELECT mappings
+         FROM crm_field_mappings
+         WHERE form_id = $1 AND crm_connection_id = $2 AND is_active = true`,
+        [job.form_id, job.crm_connection_id]
+      );
+      mappings = mapResult.rows[0]?.mappings || [];
+    }
   } catch (err) {
     console.warn(`[CRM] job ${jobId} 取得欄位對應失敗（將用空對應）：`, err.message);
   }
@@ -86,11 +95,18 @@ async function processJob(jobId) {
       [jobId, result.screenshotPath || null]
     );
 
-    // 更新 submission 同步狀態
-    await pool.query(
-      `UPDATE form_submissions SET crm_sync_status = 'synced' WHERE id = $1`,
-      [job.submission_id]
-    );
+    // 更新同步狀態
+    if (job.source_type === 'contact' && job.contact_id) {
+      await pool.query(
+        `UPDATE contacts SET crm_sync_status='synced', crm_last_synced=NOW(), updated_at=NOW() WHERE id=$1`,
+        [job.contact_id]
+      );
+    } else if (job.submission_id) {
+      await pool.query(
+        `UPDATE form_submissions SET crm_sync_status = 'synced' WHERE id = $1`,
+        [job.submission_id]
+      );
+    }
 
     console.log(`[CRM] ✅ job ${jobId} 完成（${job.crm_type}）`);
 
@@ -123,11 +139,18 @@ async function processJob(jobId) {
     );
 
     if (isFinal) {
-      // 更新 submission 同步狀態為失敗
-      await pool.query(
-        `UPDATE form_submissions SET crm_sync_status = 'error' WHERE id = $1`,
-        [job.submission_id]
-      );
+      // 更新同步狀態為失敗
+      if (job.source_type === 'contact' && job.contact_id) {
+        await pool.query(
+          `UPDATE contacts SET crm_sync_status='error', updated_at=NOW() WHERE id=$1`,
+          [job.contact_id]
+        );
+      } else if (job.submission_id) {
+        await pool.query(
+          `UPDATE form_submissions SET crm_sync_status = 'error' WHERE id = $1`,
+          [job.submission_id]
+        );
+      }
       console.log(`[CRM] job ${jobId} 已達最大重試次數（${max_retries}），標記為 failed`);
     } else {
       console.log(`[CRM] job ${jobId} 將自動重試（第 ${newRetryCount}/${max_retries} 次）`);
