@@ -1,7 +1,5 @@
-const CACHE_NAME = 'cardscanner-v1';
+const CACHE_NAME = 'cardscanner-v2';
 const STATIC_ASSETS = [
-  '/',
-  '/contacts',
   '/icon.svg',
   '/manifest.json',
 ];
@@ -24,7 +22,7 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch: network-first for API, cache-first for static
+// Fetch: network-first for API & HTML, cache-first for assets
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
@@ -45,7 +43,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Static assets: cache-first, fallback to network
+  // HTML navigation: always network-first (so deployments take effect immediately)
+  if (request.mode === 'navigate' || request.headers.get('accept')?.includes('text/html')) {
+    event.respondWith(
+      fetch(request).catch(() => caches.match('/') || caches.match(request))
+    );
+    return;
+  }
+
+  // Other static assets (JS/CSS/images): cache-first, update in background
   event.respondWith(
     caches.match(request).then((cached) => {
       const fetchPromise = fetch(request).then((response) => {
