@@ -32,9 +32,9 @@ export default function ContactsPage() {
   useEffect(() => { loadCats(); }, [loadCats]);
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#0f172a', margin: 0 }}>
+    <div style={{ padding: 'clamp(16px, 3vw, 28px) clamp(12px, 3vw, 32px)', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ marginBottom: 20 }}>
+        <h1 style={{ fontSize: 'clamp(18px, 4vw, 22px)', fontWeight: 700, color: '#0f172a', margin: 0 }}>
           📇 名片通訊錄
         </h1>
         <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>
@@ -42,12 +42,13 @@ export default function ContactsPage() {
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, borderBottom: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', gap: 0, marginBottom: 20, borderBottom: '1px solid #e2e8f0', overflowX: 'auto' }}>
         {[['list', '📋 聯絡人列表'], ['scan', '📷 掃描名片'], ['categories', '🏷️ 分類管理']].map(([key, label]) => (
           <button key={key} onClick={() => setTab(key)} style={{
-            padding: '9px 20px', fontSize: 14, fontWeight: 600, border: 'none', cursor: 'pointer',
+            padding: '9px 16px', fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer',
             borderBottom: tab === key ? '2px solid #3b82f6' : '2px solid transparent',
             color: tab === key ? '#3b82f6' : '#64748b', background: 'transparent', marginBottom: -1,
+            whiteSpace: 'nowrap', flexShrink: 0,
           }}>{label}</button>
         ))}
       </div>
@@ -134,27 +135,29 @@ function ListTab({ categories }) {
   return (
     <div>
       {/* 搜尋列 */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ flex: '1 1 200px', minWidth: 0, position: 'relative' }}>
           <Search size={16} style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
           <input value={q} onChange={e => setQ(e.target.value)}
             placeholder="搜尋姓名、公司、職稱..."
             style={{ ...inputStyle, paddingLeft: 34, width: '100%' }} />
         </div>
-        <select value={catFilter} onChange={e => setCat(e.target.value)} style={{ ...inputStyle, maxWidth: 160 }}>
-          <option value="">全部分類</option>
-          {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        <button onClick={() => setFavOnly(!favOnly)} style={{
-          ...btnStyle, background: favOnly ? '#fef3c7' : '#f1f5f9', color: favOnly ? '#d97706' : '#64748b',
-        }}>
-          <Star size={14} fill={favOnly ? '#d97706' : 'none'} /> 收藏
-        </button>
-        <button onClick={() => { window.open('/api/contacts/export/csv', '_blank'); }}
-          style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
-          <Download size={14} /> 匯出
-        </button>
-        <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {total} 位</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={catFilter} onChange={e => setCat(e.target.value)} style={{ ...inputStyle, width: 'auto', minWidth: 100 }}>
+            <option value="">全部分類</option>
+            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <button onClick={() => setFavOnly(!favOnly)} style={{
+            ...btnStyle, background: favOnly ? '#fef3c7' : '#f1f5f9', color: favOnly ? '#d97706' : '#64748b',
+          }}>
+            <Star size={14} fill={favOnly ? '#d97706' : 'none'} /> 收藏
+          </button>
+          <button onClick={() => { window.open('/api/contacts/export/csv', '_blank'); }}
+            style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
+            <Download size={14} /> 匯出
+          </button>
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {total} 位</span>
+        </div>
       </div>
 
       {error && (
@@ -179,20 +182,20 @@ function ListTab({ categories }) {
           <p style={{ fontSize: 13 }}>前往「掃描名片」上傳名片，或手動新增聯絡人</p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 14 }}>
           {items.map(item => (
             <div key={item.id} style={{
-              border: '1px solid #e2e8f0', borderRadius: 12, padding: '16px 18px',
+              border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px',
               background: '#fff', transition: 'box-shadow 0.15s',
               boxShadow: expanded === item.id ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
             }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                 <div style={{
-                  width: 42, height: 42, borderRadius: '50%',
+                  width: 40, height: 40, borderRadius: '50%',
                   background: item.category_color || '#e2e8f0', color: '#fff',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 16, fontWeight: 700, flexShrink: 0,
+                  fontSize: 15, fontWeight: 700, flexShrink: 0,
                 }}>
                   {(item.full_name || item.company || '?')[0]}
                 </div>
@@ -212,15 +215,15 @@ function ListTab({ categories }) {
               </div>
 
               {/* Quick info */}
-              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                 {getPrimaryValue(item.emails) && (
-                  <span style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <Mail size={11} /> {getPrimaryValue(item.emails)}
+                  <span style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <Mail size={11} style={{ flexShrink: 0 }} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getPrimaryValue(item.emails)}</span>
                   </span>
                 )}
                 {getPrimaryValue(item.phones) && (
                   <span style={{ fontSize: 11, color: '#64748b', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <Phone size={11} /> {getPrimaryValue(item.phones)}
+                    <Phone size={11} style={{ flexShrink: 0 }} /> {getPrimaryValue(item.phones)}
                   </span>
                 )}
               </div>
@@ -260,8 +263,8 @@ function ListTab({ categories }) {
               {/* Expanded detail */}
               {expanded === item.id && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #f1f5f9', fontSize: 13 }}>
-                  {item.address && <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}><MapPin size={14} color="#94a3b8" />{item.address}</div>}
-                  {item.website && <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}><Globe size={14} color="#94a3b8" /><a href={item.website} target="_blank" rel="noreferrer" style={{ color: '#3b82f6' }}>{item.website}</a></div>}
+                  {item.address && <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}><MapPin size={14} color="#94a3b8" style={{ flexShrink: 0, marginTop: 2 }} /><span>{item.address}</span></div>}
+                  {item.website && <div style={{ marginBottom: 6, display: 'flex', gap: 6 }}><Globe size={14} color="#94a3b8" style={{ flexShrink: 0, marginTop: 2 }} /><a href={item.website} target="_blank" rel="noreferrer" style={{ color: '#3b82f6', wordBreak: 'break-all' }}>{item.website}</a></div>}
                   {(item.emails || []).length > 1 && (
                     <div style={{ marginBottom: 6 }}>
                       <strong>所有 Email：</strong>
@@ -286,7 +289,7 @@ function ListTab({ categories }) {
               {/* Edit inline */}
               {editing === item.id && editForm && (
                 <div style={{ marginTop: 12, paddingTop: 12, borderTop: '2px solid #3b82f6', fontSize: 13 }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
                     <input value={editForm.full_name} onChange={e => setEditForm({ ...editForm, full_name: e.target.value })}
                       placeholder="姓名" style={inputStyle} />
                     <input value={editForm.company} onChange={e => setEditForm({ ...editForm, company: e.target.value })}
@@ -320,7 +323,7 @@ function ListTab({ categories }) {
 //  Tab 2: 掃描名片
 // ═══════════════════════════════════════════════════════════════════════════════
 function ScanTab({ categories, onSaved }) {
-  const [mode, setMode]         = useState('upload'); // upload | camera
+  const [mode, setMode]         = useState('upload'); // upload | camera | manual
   const [file, setFile]         = useState(null);
   const [preview, setPreview]   = useState('');
   const [scanning, setScanning] = useState(false);
@@ -422,7 +425,7 @@ function ScanTab({ categories, onSaved }) {
     try {
       await axios.post('/api/contacts', {
         ...form,
-        source_type: 'scan',
+        source_type: result ? 'scan' : 'manual',
         source_image_url: result?.image_url || null,
         ai_raw_result: result?.raw_result || null,
         ai_confidence: result?.confidence || null,
@@ -438,7 +441,10 @@ function ScanTab({ categories, onSaved }) {
 
   // 手動新增（不掃描）
   const handleManualAdd = () => {
+    stopCamera();
     setResult(null);
+    setFile(null);
+    setPreview('');
     setForm({
       full_name: '', first_name: '', last_name: '', company: '', job_title: '', department: '',
       emails: [{ value: '', label: '工作', is_primary: true }],
@@ -451,19 +457,21 @@ function ScanTab({ categories, onSaved }) {
     <div>
       {!form ? (
         <>
-          {/* 模式選擇 */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+          {/* 模式選擇 - 響應式 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
             <button onClick={() => { setMode('upload'); stopCamera(); }}
               style={{ ...modeBtn, ...(mode === 'upload' ? modeBtnActive : {}) }}>
-              <Upload size={20} /> 選擇圖片
+              <Upload size={20} />
+              <span>選擇圖片</span>
             </button>
             <button onClick={startCamera}
               style={{ ...modeBtn, ...(mode === 'camera' ? modeBtnActive : {}) }}>
-              <Camera size={20} /> 拍照
+              <Camera size={20} />
+              <span>拍照</span>
             </button>
-            <button onClick={handleManualAdd}
-              style={{ ...modeBtn, marginLeft: 'auto' }}>
-              <Plus size={20} /> 手動新增
+            <button onClick={handleManualAdd} style={modeBtn}>
+              <Plus size={20} />
+              <span>手動新增</span>
             </button>
           </div>
 
@@ -485,12 +493,12 @@ function ScanTab({ categories, onSaved }) {
           {mode === 'upload' && !preview && (
             <label style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              border: '2px dashed #cbd5e1', borderRadius: 16, padding: '48px 24px', cursor: 'pointer',
+              border: '2px dashed #cbd5e1', borderRadius: 16, padding: 'clamp(24px, 5vw, 48px) 20px', cursor: 'pointer',
               background: '#fafbfc', transition: 'border-color 0.2s',
             }}>
-              <Upload size={40} color="#94a3b8" style={{ marginBottom: 12 }} />
-              <p style={{ fontSize: 15, color: '#64748b', margin: 0 }}>點擊選擇名片圖片，或拖曳到此處</p>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0' }}>支援 JPG、PNG、WebP、HEIC（最大 20MB）</p>
+              <Upload size={36} color="#94a3b8" style={{ marginBottom: 12 }} />
+              <p style={{ fontSize: 14, color: '#64748b', margin: 0, textAlign: 'center' }}>點擊選擇名片圖片</p>
+              <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', textAlign: 'center' }}>JPG、PNG、WebP、HEIC（最大 20MB）</p>
               <input ref={fileRef} type="file" accept="image/*" capture="environment"
                 onChange={handleFileChange} style={{ display: 'none' }} />
             </label>
@@ -499,7 +507,7 @@ function ScanTab({ categories, onSaved }) {
           {/* 預覽 + 掃描按鈕 */}
           {preview && (
             <div style={{ textAlign: 'center' }}>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
+              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
                 <img src={preview} alt="名片預覽"
                   style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, border: '1px solid #e2e8f0' }} />
                 <button onClick={() => { setFile(null); setPreview(''); }}
@@ -513,6 +521,7 @@ function ScanTab({ categories, onSaved }) {
                 <button onClick={handleScan} disabled={scanning} style={{
                   padding: '12px 36px', fontSize: 15, fontWeight: 600, borderRadius: 10,
                   background: scanning ? '#94a3b8' : '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
+                  width: '100%', maxWidth: 300,
                 }}>
                   {scanning ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite', marginRight: 6 }} />AI 辨識中...</> : '🔍 開始辨識'}
                 </button>
@@ -527,6 +536,7 @@ function ScanTab({ categories, onSaved }) {
             <div style={{
               display: 'flex', gap: 12, marginBottom: 20, padding: '12px 16px', borderRadius: 10,
               background: result.confidence >= 0.8 ? '#ecfdf5' : result.confidence >= 0.5 ? '#fffbeb' : '#fef2f2',
+              flexWrap: 'wrap',
             }}>
               <div style={{ fontSize: 13 }}>
                 <strong>AI 辨識信心度：</strong>{Math.round((result.confidence || 0) * 100)}%
@@ -535,7 +545,7 @@ function ScanTab({ categories, onSaved }) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12 }}>
             <FormField label="姓名 *" value={form.full_name} onChange={v => setForm({ ...form, full_name: v })} />
             <FormField label="公司" value={form.company} onChange={v => setForm({ ...form, company: v })} icon={<Building2 size={14} />} />
             <FormField label="職稱" value={form.job_title} onChange={v => setForm({ ...form, job_title: v })} />
@@ -548,15 +558,15 @@ function ScanTab({ categories, onSaved }) {
               <Mail size={14} style={{ verticalAlign: -2 }} /> Email
             </label>
             {form.emails.map((e, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 <input value={e.value} onChange={ev => {
                   const arr = [...form.emails]; arr[i] = { ...arr[i], value: ev.target.value };
                   setForm({ ...form, emails: arr });
-                }} placeholder="email@example.com" style={{ ...inputStyle, flex: 1 }} />
+                }} placeholder="email@example.com" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
                 <input value={e.label} onChange={ev => {
                   const arr = [...form.emails]; arr[i] = { ...arr[i], label: ev.target.value };
                   setForm({ ...form, emails: arr });
-                }} placeholder="標籤" style={{ ...inputStyle, width: 80 }} />
+                }} placeholder="標籤" style={{ ...inputStyle, width: 60 }} />
                 <button onClick={() => setForm({ ...form, emails: form.emails.filter((_, j) => j !== i) })}
                   style={smBtn}><X size={13} /></button>
               </div>
@@ -571,15 +581,15 @@ function ScanTab({ categories, onSaved }) {
               <Phone size={14} style={{ verticalAlign: -2 }} /> 電話
             </label>
             {form.phones.map((p, i) => (
-              <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
                 <input value={p.value} onChange={ev => {
                   const arr = [...form.phones]; arr[i] = { ...arr[i], value: ev.target.value };
                   setForm({ ...form, phones: arr });
-                }} placeholder="0912-345-678" style={{ ...inputStyle, flex: 1 }} />
+                }} placeholder="0912-345-678" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
                 <input value={p.label} onChange={ev => {
                   const arr = [...form.phones]; arr[i] = { ...arr[i], label: ev.target.value };
                   setForm({ ...form, phones: arr });
-                }} placeholder="標籤" style={{ ...inputStyle, width: 80 }} />
+                }} placeholder="標籤" style={{ ...inputStyle, width: 60 }} />
                 <button onClick={() => setForm({ ...form, phones: form.phones.filter((_, j) => j !== i) })}
                   style={smBtn}><X size={13} /></button>
               </div>
@@ -588,7 +598,7 @@ function ScanTab({ categories, onSaved }) {
               style={{ ...smBtn, color: '#3b82f6', fontSize: 12 }}>+ 新增電話</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12, marginTop: 16 }}>
             <FormField label="地址" value={form.address} onChange={v => setForm({ ...form, address: v })} icon={<MapPin size={14} />} />
             <FormField label="網站" value={form.website} onChange={v => setForm({ ...form, website: v })} icon={<Globe size={14} />} />
           </div>
@@ -620,7 +630,7 @@ function ScanTab({ categories, onSaved }) {
               rows={3} style={{ ...inputStyle, width: '100%' }} placeholder="任何附加說明..." />
           </div>
 
-          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button onClick={() => { setForm(null); setResult(null); }}
               style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
               <X size={16} /> 取消
@@ -682,9 +692,9 @@ function CategoriesTab({ categories, reload }) {
       {/* 新增/編輯表單 */}
       <div style={{
         display: 'flex', gap: 10, marginBottom: 24, padding: 16,
-        background: '#f8fafc', borderRadius: 12, alignItems: 'flex-end',
+        background: '#f8fafc', borderRadius: 12, flexWrap: 'wrap', alignItems: 'flex-end',
       }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: '1 1 150px', minWidth: 0 }}>
           <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>
             分類名稱
           </label>
@@ -693,7 +703,7 @@ function CategoriesTab({ categories, reload }) {
         </div>
         <div>
           <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 4 }}>顏色</label>
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
             {COLORS.map(c => (
               <button key={c} onClick={() => setForm({ ...form, color: c })} style={{
                 width: 24, height: 24, borderRadius: '50%', background: c, border: form.color === c ? '3px solid #0f172a' : '2px solid #e2e8f0',
@@ -702,13 +712,15 @@ function CategoriesTab({ categories, reload }) {
             ))}
           </div>
         </div>
-        <button onClick={handleSave} style={{ ...btnStyle, background: '#3b82f6', color: '#fff', whiteSpace: 'nowrap' }}>
-          {editId ? '更新' : '新增'}
-        </button>
-        {editId && (
-          <button onClick={() => { setEditId(null); setForm({ name: '', color: '#6b7280' }); }}
-            style={{ ...btnStyle, background: '#f1f5f9' }}>取消</button>
-        )}
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={handleSave} style={{ ...btnStyle, background: '#3b82f6', color: '#fff', whiteSpace: 'nowrap' }}>
+            {editId ? '更新' : '新增'}
+          </button>
+          {editId && (
+            <button onClick={() => { setEditId(null); setForm({ name: '', color: '#6b7280' }); }}
+              style={{ ...btnStyle, background: '#f1f5f9' }}>取消</button>
+          )}
+        </div>
       </div>
 
       {/* 分類列表 */}
@@ -747,8 +759,8 @@ function FormField({ label, value, onChange, icon }) {
 
 // ─── 共用樣式 ──────────────────────────────────────────────────────────────────
 const inputStyle = {
-  padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 13,
-  outline: 'none', width: '100%', boxSizing: 'border-box',
+  padding: '8px 12px', border: '1px solid #e2e8f0', borderRadius: 8, fontSize: 14,
+  outline: 'none', width: '100%', boxSizing: 'border-box', fontFamily: 'inherit',
 };
 const btnStyle = {
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 16px',
@@ -760,9 +772,10 @@ const smBtn = {
   background: '#fff', cursor: 'pointer', color: '#64748b',
 };
 const modeBtn = {
-  display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px',
-  fontSize: 14, fontWeight: 600, borderRadius: 10, border: '1px solid #e2e8f0',
-  background: '#fff', cursor: 'pointer', color: '#64748b',
+  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+  gap: 6, padding: '16px 12px',
+  fontSize: 13, fontWeight: 600, borderRadius: 12, border: '1px solid #e2e8f0',
+  background: '#fff', cursor: 'pointer', color: '#64748b', textAlign: 'center',
 };
 const modeBtnActive = {
   background: '#eff6ff', color: '#3b82f6', borderColor: '#3b82f6',
