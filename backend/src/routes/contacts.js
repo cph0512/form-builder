@@ -353,6 +353,24 @@ router.put('/:id', async (req, res) => {
 });
 
 // 刪除（軟刪除）
+// 批次刪除
+router.delete('/batch', async (req, res) => {
+  try {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: '請提供要刪除的聯絡人 ID' });
+    }
+    const result = await pool.query(
+      'UPDATE contacts SET is_active=false, updated_at=NOW() WHERE id = ANY($1::uuid[])',
+      [ids]
+    );
+    await logAction(pool, req.user.id, 'batch_delete_contacts', 'contact', null, { count: ids.length }, getIp(req));
+    res.json({ message: `已刪除 ${result.rowCount} 筆聯絡人` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await pool.query(

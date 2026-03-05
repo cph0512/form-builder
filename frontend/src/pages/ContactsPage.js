@@ -91,11 +91,28 @@ function ListTab({ categories }) {
   const deselectAll = () => setSelectedIds(new Set());
   const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); };
 
-  const handleBatchExport = (format) => {
+  const handleBatchExport = async (target) => {
     const ids = [...selectedIds].join(',');
     const url = `/api/contacts/export/vcard?ids=${ids}`;
     const filename = `contacts_${selectedIds.size}.vcf`;
-    handleExport(url, filename);
+    await handleExport(url, filename);
+    if (target === 'google') {
+      window.open('https://contacts.google.com/import', '_blank');
+      toast('請在 Google 聯絡人頁面上傳剛下載的 .vcf 檔案', { duration: 5000, icon: 'ℹ️' });
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    const count = selectedIds.size;
+    if (!window.confirm(`確定要刪除這 ${count} 位聯絡人？`)) return;
+    try {
+      await axios.delete('/api/contacts/batch', { data: { ids: [...selectedIds] } });
+      toast.success(`已刪除 ${count} 筆聯絡人`);
+      exitSelectMode();
+      load();
+    } catch (err) {
+      toast.error('刪除失敗：' + (err.response?.data?.error || err.message));
+    }
   };
 
   const handleExport = async (url, filename) => {
@@ -192,11 +209,15 @@ function ListTab({ categories }) {
           <div style={{ flex: 1 }} />
           <button onClick={() => handleBatchExport('iphone')} disabled={exporting || selectedIds.size === 0}
             style={{ ...btnStyle, background: '#0f172a', color: '#fff', opacity: selectedIds.size === 0 ? 0.4 : 1 }}>
-            <Smartphone size={14} /> 匯入 iPhone
+            <Smartphone size={14} /> iPhone
           </button>
           <button onClick={() => handleBatchExport('google')} disabled={exporting || selectedIds.size === 0}
             style={{ ...btnStyle, background: '#4285f4', color: '#fff', opacity: selectedIds.size === 0 ? 0.4 : 1 }}>
-            <Chrome size={14} /> 匯入 Google
+            <Chrome size={14} /> Google
+          </button>
+          <button onClick={handleBatchDelete} disabled={selectedIds.size === 0}
+            style={{ ...btnStyle, background: '#ef4444', color: '#fff', opacity: selectedIds.size === 0 ? 0.4 : 1 }}>
+            <Trash2 size={14} /> 刪除
           </button>
           <button onClick={exitSelectMode}
             style={{ ...btnStyle, background: '#fff', color: '#64748b', border: '1px solid #e2e8f0' }}>
