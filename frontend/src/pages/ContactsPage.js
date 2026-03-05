@@ -75,6 +75,26 @@ function ListTab({ categories }) {
   const [editing, setEditing]   = useState(null);
   const [editForm, setEditForm] = useState(null);
   const [showExport, setShowExport] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async (url, filename) => {
+    setExporting(true);
+    setShowExport(false);
+    try {
+      const { data } = await axios.get(url, { responseType: 'blob' });
+      const blobUrl = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+      toast.success('匯出成功');
+    } catch (err) {
+      toast.error('匯出失敗：' + (err.response?.data?.error || err.message));
+    } finally { setExporting(false); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -164,14 +184,16 @@ function ListTab({ categories }) {
                 border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
                 zIndex: 20, minWidth: 180, overflow: 'hidden',
               }}>
-                <button onClick={() => { window.open('/api/contacts/export/csv', '_blank'); setShowExport(false); }}
+                <button onClick={() => handleExport('/api/contacts/export/csv', 'contacts.csv')}
+                  disabled={exporting}
                   style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
                     textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                   CSV 格式
                 </button>
-                <button onClick={() => { window.open('/api/contacts/export/vcard', '_blank'); setShowExport(false); }}
+                <button onClick={() => handleExport('/api/contacts/export/vcard', 'contacts.vcf')}
+                  disabled={exporting}
                   style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
                     textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151', borderTop: '1px solid #f1f5f9' }}
                   onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
@@ -310,9 +332,10 @@ function ListTab({ categories }) {
                     </div>
                   )}
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
-                    <button onClick={() => window.open(`/api/contacts/export/vcard?id=${item.id}`, '_blank')}
+                    <button onClick={() => handleExport(`/api/contacts/export/vcard?id=${item.id}`, `${item.full_name || 'contact'}.vcf`)}
+                      disabled={exporting}
                       style={{ ...smBtn, color: '#3b82f6' }}>
-                      <Download size={13} /> 匯出 vCard
+                      <Download size={13} /> {exporting ? '匯出中...' : '匯出 vCard'}
                     </button>
                   </div>
                 </div>
