@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store';
-import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity, MessageSquare, CalendarDays, BookOpen, ContactRound } from 'lucide-react';
+import { LayoutDashboard, FileText, PlusCircle, LogOut, ChevronRight, User, Users, Building2, ClipboardList, Database, ArrowLeftRight, Activity, MessageSquare, CalendarDays, BookOpen, Contact2 } from 'lucide-react';
 
 const ROLE_LABELS = {
   super_admin: '超級管理員',
@@ -79,7 +79,7 @@ export default function Layout() {
           {hasPermission('contacts_manage') && (
             <>
               {!collapsed ? <SectionLabel style={{ marginTop: 8 }}>通訊錄</SectionLabel> : <Divider />}
-              <NavItem to="/contacts" icon={<ContactRound size={18} />} label="名片通訊錄" collapsed={collapsed} />
+              <NavItem to="/contacts" icon={<Contact2 size={18} />} label="名片通訊錄" collapsed={collapsed} />
             </>
           )}
         </nav>
