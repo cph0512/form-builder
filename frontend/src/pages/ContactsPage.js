@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
 import {
-  Search, Camera, Upload, Star, StarOff, Edit2, Trash2, RefreshCw,
+  Search, Camera, Upload, Star, StarOff, Edit2, Trash2,
   Plus, X, ChevronDown, ChevronUp, Globe, Phone, Mail, Building2,
   User, MapPin, Save, Loader, AlertTriangle, Download,
 } from 'lucide-react';
@@ -323,53 +323,14 @@ function ListTab({ categories }) {
 //  Tab 2: 掃描名片
 // ═══════════════════════════════════════════════════════════════════════════════
 function ScanTab({ categories, onSaved }) {
-  const [mode, setMode]         = useState('upload'); // upload | camera | manual
   const [file, setFile]         = useState(null);
   const [preview, setPreview]   = useState('');
   const [scanning, setScanning] = useState(false);
   const [result, setResult]     = useState(null);
   const [saving, setSaving]     = useState(false);
   const [form, setForm]         = useState(null);
-  const videoRef  = useRef(null);
-  const streamRef = useRef(null);
+  const cameraRef = useRef(null);
   const fileRef   = useRef(null);
-
-  // 相機啟動
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) videoRef.current.srcObject = stream;
-      setMode('camera');
-    } catch (err) {
-      toast.error('無法存取相機：' + err.message);
-    }
-  };
-
-  const stopCamera = () => {
-    streamRef.current?.getTracks().forEach(t => t.stop());
-    streamRef.current = null;
-  };
-
-  const capturePhoto = () => {
-    const video = videoRef.current;
-    if (!video) return;
-    const canvas = document.createElement('canvas');
-    canvas.width  = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    canvas.toBlob(blob => {
-      const f = new File([blob], 'card_capture.jpg', { type: 'image/jpeg' });
-      setFile(f);
-      setPreview(URL.createObjectURL(blob));
-      stopCamera();
-      setMode('upload');
-    }, 'image/jpeg', 0.92);
-  };
-
-  useEffect(() => { return () => stopCamera(); }, []);
 
   const handleFileChange = (e) => {
     const f = e.target.files?.[0];
@@ -389,7 +350,6 @@ function ScanTab({ categories, onSaved }) {
       fd.append('image', file);
       const { data } = await axios.post('/api/contacts/scan', fd);
       setResult(data);
-      // 建立可編輯表單
       const c = data.parsed || {};
       const catMatch = categories.find(cat => cat.name === data.suggested_category);
       setForm({
@@ -441,7 +401,6 @@ function ScanTab({ categories, onSaved }) {
 
   // 手動新增（不掃描）
   const handleManualAdd = () => {
-    stopCamera();
     setResult(null);
     setFile(null);
     setPreview('');
@@ -453,77 +412,89 @@ function ScanTab({ categories, onSaved }) {
     });
   };
 
+  // 隱藏的 file inputs
+  const hiddenInputs = (
+    <>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment"
+        onChange={handleFileChange} style={{ display: 'none' }} />
+      <input ref={fileRef} type="file" accept="image/*"
+        onChange={handleFileChange} style={{ display: 'none' }} />
+    </>
+  );
+
   return (
     <div>
+      {hiddenInputs}
+
       {!form ? (
         <>
-          {/* 模式選擇 - 響應式 */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
-            <button onClick={() => { setMode('upload'); stopCamera(); }}
-              style={{ ...modeBtn, ...(mode === 'upload' ? modeBtnActive : {}) }}>
-              <Upload size={20} />
-              <span>選擇圖片</span>
-            </button>
-            <button onClick={startCamera}
-              style={{ ...modeBtn, ...(mode === 'camera' ? modeBtnActive : {}) }}>
-              <Camera size={20} />
-              <span>拍照</span>
-            </button>
-            <button onClick={handleManualAdd} style={modeBtn}>
-              <Plus size={20} />
-              <span>手動新增</span>
-            </button>
-          </div>
+          {/* 尚無預覽圖時：顯示操作按鈕 */}
+          {!preview ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {/* 拍照按鈕 — 最大最顯眼 */}
+              <button onClick={() => cameraRef.current?.click()} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                padding: '20px 24px', fontSize: 16, fontWeight: 700, borderRadius: 14,
+                background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(59,130,246,0.3)',
+              }}>
+                <Camera size={22} /> 拍照掃描名片
+              </button>
 
-          {/* 相機預覽 */}
-          {mode === 'camera' && (
-            <div style={{ textAlign: 'center', marginBottom: 20 }}>
-              <video ref={videoRef} autoPlay playsInline
-                style={{ width: '100%', maxWidth: 500, borderRadius: 12, border: '2px solid #e2e8f0' }} />
-              <div style={{ marginTop: 12 }}>
-                <button onClick={capturePhoto} style={{
-                  padding: '12px 32px', fontSize: 16, fontWeight: 600, borderRadius: 999,
-                  background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
-                }}>📸 拍攝</button>
+              {/* 次要操作 */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <button onClick={() => fileRef.current?.click()} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '14px 16px', fontSize: 14, fontWeight: 600, borderRadius: 12,
+                  background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', cursor: 'pointer',
+                }}>
+                  <Upload size={18} /> 選擇圖片
+                </button>
+                <button onClick={handleManualAdd} style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  padding: '14px 16px', fontSize: 14, fontWeight: 600, borderRadius: 12,
+                  background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0', cursor: 'pointer',
+                }}>
+                  <Plus size={18} /> 手動新增
+                </button>
+              </div>
+
+              {/* 說明 */}
+              <div style={{
+                textAlign: 'center', padding: '32px 16px', marginTop: 8,
+                border: '2px dashed #e2e8f0', borderRadius: 16, background: '#fafbfc',
+              }}>
+                <Camera size={40} color="#cbd5e1" style={{ marginBottom: 12 }} />
+                <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>拍攝或上傳名片，AI 自動辨識聯絡資訊</p>
+                <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0' }}>支援 JPG、PNG、WebP、HEIC（最大 20MB）</p>
               </div>
             </div>
-          )}
-
-          {/* 上傳區域 */}
-          {mode === 'upload' && !preview && (
-            <label style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              border: '2px dashed #cbd5e1', borderRadius: 16, padding: 'clamp(24px, 5vw, 48px) 20px', cursor: 'pointer',
-              background: '#fafbfc', transition: 'border-color 0.2s',
-            }}>
-              <Upload size={36} color="#94a3b8" style={{ marginBottom: 12 }} />
-              <p style={{ fontSize: 14, color: '#64748b', margin: 0, textAlign: 'center' }}>點擊選擇名片圖片</p>
-              <p style={{ fontSize: 12, color: '#94a3b8', margin: '6px 0 0', textAlign: 'center' }}>JPG、PNG、WebP、HEIC（最大 20MB）</p>
-              <input ref={fileRef} type="file" accept="image/*" capture="environment"
-                onChange={handleFileChange} style={{ display: 'none' }} />
-            </label>
-          )}
-
-          {/* 預覽 + 掃描按鈕 */}
-          {preview && (
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+          ) : (
+            /* 有預覽圖：顯示圖片 + 辨識按鈕 */
+            <div>
+              <div style={{ position: 'relative', marginBottom: 16 }}>
                 <img src={preview} alt="名片預覽"
-                  style={{ maxWidth: '100%', maxHeight: 400, borderRadius: 12, border: '1px solid #e2e8f0' }} />
+                  style={{ width: '100%', maxHeight: 400, objectFit: 'contain', borderRadius: 12, border: '1px solid #e2e8f0', display: 'block' }} />
                 <button onClick={() => { setFile(null); setPreview(''); }}
                   style={{
-                    position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: '50%',
+                    position: 'absolute', top: 8, right: 8, width: 32, height: 32, borderRadius: '50%',
                     background: 'rgba(0,0,0,0.5)', color: '#fff', border: 'none', cursor: 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}><X size={14} /></button>
+                  }}><X size={16} /></button>
               </div>
-              <div style={{ marginTop: 16 }}>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button onClick={() => { setFile(null); setPreview(''); }}
+                  style={{
+                    flex: 1, padding: '12px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                    background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer',
+                  }}>重新選擇</button>
                 <button onClick={handleScan} disabled={scanning} style={{
-                  padding: '12px 36px', fontSize: 15, fontWeight: 600, borderRadius: 10,
+                  flex: 2, padding: '12px', fontSize: 15, fontWeight: 700, borderRadius: 10,
                   background: scanning ? '#94a3b8' : '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
-                  width: '100%', maxWidth: 300,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                 }}>
-                  {scanning ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite', marginRight: 6 }} />AI 辨識中...</> : '🔍 開始辨識'}
+                  {scanning ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> AI 辨識中...</> : <><Search size={16} /> 開始辨識</>}
                 </button>
               </div>
             </div>
@@ -531,21 +502,18 @@ function ScanTab({ categories, onSaved }) {
         </>
       ) : (
         /* 辨識結果 / 手動新增 表單 */
-        <div style={{ maxWidth: 700, margin: '0 auto' }}>
+        <div>
           {result && (
             <div style={{
-              display: 'flex', gap: 12, marginBottom: 20, padding: '12px 16px', borderRadius: 10,
+              marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 13,
               background: result.confidence >= 0.8 ? '#ecfdf5' : result.confidence >= 0.5 ? '#fffbeb' : '#fef2f2',
-              flexWrap: 'wrap',
             }}>
-              <div style={{ fontSize: 13 }}>
-                <strong>AI 辨識信心度：</strong>{Math.round((result.confidence || 0) * 100)}%
-                {result.notes && <span style={{ marginLeft: 8, color: '#64748b' }}>— {result.notes}</span>}
-              </div>
+              <strong>AI 辨識信心度：</strong>{Math.round((result.confidence || 0) * 100)}%
+              {result.notes && <span style={{ marginLeft: 8, color: '#64748b' }}>— {result.notes}</span>}
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 10 }}>
             <FormField label="姓名 *" value={form.full_name} onChange={v => setForm({ ...form, full_name: v })} />
             <FormField label="公司" value={form.company} onChange={v => setForm({ ...form, company: v })} icon={<Building2 size={14} />} />
             <FormField label="職稱" value={form.job_title} onChange={v => setForm({ ...form, job_title: v })} />
@@ -553,22 +521,22 @@ function ScanTab({ categories, onSaved }) {
           </div>
 
           {/* Email 列表 */}
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>
               <Mail size={14} style={{ verticalAlign: -2 }} /> Email
             </label>
             {form.emails.map((e, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
                 <input value={e.value} onChange={ev => {
                   const arr = [...form.emails]; arr[i] = { ...arr[i], value: ev.target.value };
                   setForm({ ...form, emails: arr });
-                }} placeholder="email@example.com" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+                }} placeholder="email@example.com" type="email" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
                 <input value={e.label} onChange={ev => {
                   const arr = [...form.emails]; arr[i] = { ...arr[i], label: ev.target.value };
                   setForm({ ...form, emails: arr });
-                }} placeholder="標籤" style={{ ...inputStyle, width: 60 }} />
+                }} placeholder="標籤" style={{ ...inputStyle, width: 56, flexShrink: 0 }} />
                 <button onClick={() => setForm({ ...form, emails: form.emails.filter((_, j) => j !== i) })}
-                  style={smBtn}><X size={13} /></button>
+                  style={{ ...smBtn, padding: '5px 6px', flexShrink: 0 }}><X size={13} /></button>
               </div>
             ))}
             <button onClick={() => setForm({ ...form, emails: [...form.emails, { value: '', label: '其他', is_primary: false }] })}
@@ -576,37 +544,37 @@ function ScanTab({ categories, onSaved }) {
           </div>
 
           {/* Phone 列表 */}
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>
               <Phone size={14} style={{ verticalAlign: -2 }} /> 電話
             </label>
             {form.phones.map((p, i) => (
-              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
                 <input value={p.value} onChange={ev => {
                   const arr = [...form.phones]; arr[i] = { ...arr[i], value: ev.target.value };
                   setForm({ ...form, phones: arr });
-                }} placeholder="0912-345-678" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
+                }} placeholder="0912-345-678" type="tel" style={{ ...inputStyle, flex: 1, minWidth: 0 }} />
                 <input value={p.label} onChange={ev => {
                   const arr = [...form.phones]; arr[i] = { ...arr[i], label: ev.target.value };
                   setForm({ ...form, phones: arr });
-                }} placeholder="標籤" style={{ ...inputStyle, width: 60 }} />
+                }} placeholder="標籤" style={{ ...inputStyle, width: 56, flexShrink: 0 }} />
                 <button onClick={() => setForm({ ...form, phones: form.phones.filter((_, j) => j !== i) })}
-                  style={smBtn}><X size={13} /></button>
+                  style={{ ...smBtn, padding: '5px 6px', flexShrink: 0 }}><X size={13} /></button>
               </div>
             ))}
             <button onClick={() => setForm({ ...form, phones: [...form.phones, { value: '', label: '其他', is_primary: false }] })}
               style={{ ...smBtn, color: '#3b82f6', fontSize: 12 }}>+ 新增電話</button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 12, marginTop: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 10, marginTop: 14 }}>
             <FormField label="地址" value={form.address} onChange={v => setForm({ ...form, address: v })} icon={<MapPin size={14} />} />
             <FormField label="網站" value={form.website} onChange={v => setForm({ ...form, website: v })} icon={<Globe size={14} />} />
           </div>
 
           {/* 分類 */}
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>分類</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {categories.map(cat => (
                 <button key={cat.id} onClick={() => setForm({ ...form, category_id: cat.id })}
                   style={{
@@ -624,19 +592,32 @@ function ScanTab({ categories, onSaved }) {
             )}
           </div>
 
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 14 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6, display: 'block' }}>備註</label>
             <textarea value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}
-              rows={3} style={{ ...inputStyle, width: '100%' }} placeholder="任何附加說明..." />
+              rows={2} style={{ ...inputStyle, width: '100%' }} placeholder="任何附加說明..." />
           </div>
 
-          <div style={{ marginTop: 24, display: 'flex', gap: 12, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          {/* 底部按鈕 — 固定在底部 */}
+          <div style={{
+            marginTop: 20, display: 'flex', gap: 10,
+            position: 'sticky', bottom: 0, background: '#f8fafc', padding: '12px 0',
+          }}>
             <button onClick={() => { setForm(null); setResult(null); }}
-              style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
+              style={{
+                flex: 1, padding: '12px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
               <X size={16} /> 取消
             </button>
             <button onClick={handleSave} disabled={saving}
-              style={{ ...btnStyle, background: '#3b82f6', color: '#fff', opacity: saving ? 0.7 : 1 }}>
+              style={{
+                flex: 2, padding: '12px', fontSize: 15, fontWeight: 700, borderRadius: 10,
+                background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
+                opacity: saving ? 0.7 : 1,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+              }}>
               {saving ? <Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Save size={16} />}
               儲存聯絡人
             </button>
@@ -770,13 +751,4 @@ const smBtn = {
   display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 10px',
   fontSize: 12, fontWeight: 500, borderRadius: 6, border: '1px solid #e2e8f0',
   background: '#fff', cursor: 'pointer', color: '#64748b',
-};
-const modeBtn = {
-  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-  gap: 6, padding: '16px 12px',
-  fontSize: 13, fontWeight: 600, borderRadius: 12, border: '1px solid #e2e8f0',
-  background: '#fff', cursor: 'pointer', color: '#64748b', textAlign: 'center',
-};
-const modeBtnActive = {
-  background: '#eff6ff', color: '#3b82f6', borderColor: '#3b82f6',
 };
