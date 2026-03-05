@@ -74,6 +74,7 @@ function ListTab({ categories }) {
   const [expanded, setExpanded] = useState(null);
   const [editing, setEditing]   = useState(null);
   const [editForm, setEditForm] = useState(null);
+  const [showExport, setShowExport] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -152,10 +153,35 @@ function ListTab({ categories }) {
           }}>
             <Star size={14} fill={favOnly ? '#d97706' : 'none'} /> 收藏
           </button>
-          <button onClick={() => { window.open('/api/contacts/export/csv', '_blank'); }}
-            style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
-            <Download size={14} /> 匯出
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setShowExport(!showExport)}
+              style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
+              <Download size={14} /> 匯出 <ChevronDown size={12} />
+            </button>
+            {showExport && (
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff',
+                border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                zIndex: 20, minWidth: 180, overflow: 'hidden',
+              }}>
+                <button onClick={() => { window.open('/api/contacts/export/csv', '_blank'); setShowExport(false); }}
+                  style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
+                    textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  CSV 格式
+                </button>
+                <button onClick={() => { window.open('/api/contacts/export/vcard', '_blank'); setShowExport(false); }}
+                  style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
+                    textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151', borderTop: '1px solid #f1f5f9' }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  vCard (.vcf)
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Google / iPhone 聯絡人</div>
+                </button>
+              </div>
+            )}
+          </div>
           <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {total} 位</span>
         </div>
       </div>
@@ -283,6 +309,12 @@ function ListTab({ categories }) {
                       <img src={item.source_image_url} alt="名片" style={{ maxWidth: '100%', maxHeight: 200, borderRadius: 8, border: '1px solid #e2e8f0' }} />
                     </div>
                   )}
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                    <button onClick={() => window.open(`/api/contacts/export/vcard?id=${item.id}`, '_blank')}
+                      style={{ ...smBtn, color: '#3b82f6' }}>
+                      <Download size={13} /> 匯出 vCard
+                    </button>
+                  </div>
                 </div>
               )}
 

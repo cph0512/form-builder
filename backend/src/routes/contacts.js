@@ -199,6 +199,63 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+//  vCard 匯出（Google / iPhone 聯絡人格式）
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function escapeVCard(str) {
+  if (!str) return '';
+  return str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\n/g, '\\n');
+}
+
+function contactToVCard(c) {
+  const lines = ['BEGIN:VCARD', 'VERSION:3.0'];
+  const fn = c.full_name || [c.first_name, c.last_name].filter(Boolean).join(' ') || c.company || '';
+  lines.push(`FN:${escapeVCard(fn)}`);
+  lines.push(`N:${escapeVCard(c.last_name || '')};${escapeVCard(c.first_name || '')};;;`);
+  if (c.company || c.department) {
+    lines.push(`ORG:${escapeVCard(c.company || '')}${c.department ? ';' + escapeVCard(c.department) : ''}`);
+  }
+  if (c.job_title) lines.push(`TITLE:${escapeVCard(c.job_title)}`);
+  const emails = Array.isArray(c.emails) ? c.emails : [];
+  emails.forEach(e => {
+    if (e.value) lines.push(`EMAIL;TYPE=${(e.label || 'WORK').toUpperCase()}:${e.value}`);
+  });
+  const phones = Array.isArray(c.phones) ? c.phones : [];
+  phones.forEach(p => {
+    if (p.value) lines.push(`TEL;TYPE=${(p.label || 'WORK').toUpperCase()}:${p.value}`);
+  });
+  if (c.address) lines.push(`ADR;TYPE=WORK:;;${escapeVCard(c.address)};;;;`);
+  if (c.website) lines.push(`URL:${c.website}`);
+  if (c.notes) lines.push(`NOTE:${escapeVCard(c.notes)}`);
+  lines.push('END:VCARD');
+  return lines.join('\r\n');
+}
+
+router.get('/export/vcard', async (req, res) => {
+  try {
+    const { id } = req.query;
+    let rows;
+    if (id) {
+      const result = await pool.query('SELECT * FROM contacts WHERE id=$1 AND is_active=true', [id]);
+      rows = result.rows;
+    } else {
+      const result = await pool.query('SELECT * FROM contacts WHERE is_active=true ORDER BY created_at DESC');
+      rows = result.rows;
+    }
+    if (rows.length === 0) return res.status(404).json({ error: '找不到聯絡人' });
+
+    const vcf = rows.map(contactToVCard).join('\r\n');
+    const filename = id ? `contact_${id.slice(0, 8)}.vcf` : `contacts_${Date.now()}.vcf`;
+    res.setHeader('Content-Type', 'text/vcard; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+    res.send(vcf);
+  } catch (err) {
+    console.error('[contacts/export/vcard]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 單筆
 router.get('/:id', async (req, res) => {
   try {
