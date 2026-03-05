@@ -4,7 +4,8 @@ import toast from 'react-hot-toast';
 import {
   Search, Camera, Upload, Star, StarOff, Edit2, Trash2,
   Plus, X, ChevronDown, ChevronUp, Globe, Phone, Mail, Building2,
-  User, MapPin, Save, Loader, AlertTriangle, Download,
+  User, MapPin, Save, Loader, AlertTriangle, Download, CheckSquare, Square,
+  Smartphone, Chrome,
 } from 'lucide-react';
 
 // ─── 常數 ──────────────────────────────────────────────────────────────────────
@@ -76,6 +77,26 @@ function ListTab({ categories }) {
   const [editForm, setEditForm] = useState(null);
   const [showExport, setShowExport] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+  const selectAll = () => setSelectedIds(new Set(items.map(i => i.id)));
+  const deselectAll = () => setSelectedIds(new Set());
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); };
+
+  const handleBatchExport = (format) => {
+    const ids = [...selectedIds].join(',');
+    const url = `/api/contacts/export/vcard?ids=${ids}`;
+    const filename = `contacts_${selectedIds.size}.vcf`;
+    handleExport(url, filename);
+  };
 
   const handleExport = async (url, filename) => {
     setExporting(true);
@@ -155,58 +176,91 @@ function ListTab({ categories }) {
 
   return (
     <div>
-      {/* 搜尋列 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ flex: '1 1 200px', minWidth: 0, position: 'relative' }}>
-          <Search size={16} style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
-          <input value={q} onChange={e => setQ(e.target.value)}
-            placeholder="搜尋姓名、公司、職稱..."
-            style={{ ...inputStyle, paddingLeft: 34, width: '100%' }} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <select value={catFilter} onChange={e => setCat(e.target.value)} style={{ ...inputStyle, width: 'auto', minWidth: 100 }}>
-            <option value="">全部分類</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-          <button onClick={() => setFavOnly(!favOnly)} style={{
-            ...btnStyle, background: favOnly ? '#fef3c7' : '#f1f5f9', color: favOnly ? '#d97706' : '#64748b',
-          }}>
-            <Star size={14} fill={favOnly ? '#d97706' : 'none'} /> 收藏
+      {/* 選擇模式 toolbar */}
+      {selectMode ? (
+        <div style={{
+          display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center',
+          padding: '10px 14px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe',
+        }}>
+          <button onClick={selectedIds.size === items.length ? deselectAll : selectAll}
+            style={{ ...btnStyle, background: '#fff', color: '#3b82f6', border: '1px solid #bfdbfe' }}>
+            <CheckSquare size={14} /> {selectedIds.size === items.length ? '取消全選' : '全選'}
           </button>
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setShowExport(!showExport)}
-              style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
-              <Download size={14} /> 匯出 <ChevronDown size={12} />
-            </button>
-            {showExport && (
-              <div style={{
-                position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff',
-                border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-                zIndex: 20, minWidth: 180, overflow: 'hidden',
-              }}>
-                <button onClick={() => handleExport('/api/contacts/export/csv', 'contacts.csv')}
-                  disabled={exporting}
-                  style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
-                    textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  CSV 格式
-                </button>
-                <button onClick={() => handleExport('/api/contacts/export/vcard', 'contacts.vcf')}
-                  disabled={exporting}
-                  style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
-                    textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151', borderTop: '1px solid #f1f5f9' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  vCard (.vcf)
-                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Google / iPhone 聯絡人</div>
-                </button>
-              </div>
-            )}
-          </div>
-          <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {total} 位</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e40af' }}>
+            已選 {selectedIds.size} 筆
+          </span>
+          <div style={{ flex: 1 }} />
+          <button onClick={() => handleBatchExport('iphone')} disabled={exporting || selectedIds.size === 0}
+            style={{ ...btnStyle, background: '#0f172a', color: '#fff', opacity: selectedIds.size === 0 ? 0.4 : 1 }}>
+            <Smartphone size={14} /> 匯入 iPhone
+          </button>
+          <button onClick={() => handleBatchExport('google')} disabled={exporting || selectedIds.size === 0}
+            style={{ ...btnStyle, background: '#4285f4', color: '#fff', opacity: selectedIds.size === 0 ? 0.4 : 1 }}>
+            <Chrome size={14} /> 匯入 Google
+          </button>
+          <button onClick={exitSelectMode}
+            style={{ ...btnStyle, background: '#fff', color: '#64748b', border: '1px solid #e2e8f0' }}>
+            <X size={14} /> 取消
+          </button>
         </div>
-      </div>
+      ) : (
+        /* 搜尋列 */
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 200px', minWidth: 0, position: 'relative' }}>
+            <Search size={16} style={{ position: 'absolute', left: 10, top: 10, color: '#94a3b8' }} />
+            <input value={q} onChange={e => setQ(e.target.value)}
+              placeholder="搜尋姓名、公司、職稱..."
+              style={{ ...inputStyle, paddingLeft: 34, width: '100%' }} />
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <select value={catFilter} onChange={e => setCat(e.target.value)} style={{ ...inputStyle, width: 'auto', minWidth: 100 }}>
+              <option value="">全部分類</option>
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <button onClick={() => setFavOnly(!favOnly)} style={{
+              ...btnStyle, background: favOnly ? '#fef3c7' : '#f1f5f9', color: favOnly ? '#d97706' : '#64748b',
+            }}>
+              <Star size={14} fill={favOnly ? '#d97706' : 'none'} /> 收藏
+            </button>
+            <button onClick={() => setSelectMode(true)}
+              style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
+              <CheckSquare size={14} /> 選擇
+            </button>
+            <div style={{ position: 'relative' }}>
+              <button onClick={() => setShowExport(!showExport)}
+                style={{ ...btnStyle, background: '#f1f5f9', color: '#64748b' }}>
+                <Download size={14} /> 匯出全部 <ChevronDown size={12} />
+              </button>
+              {showExport && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: 4, background: '#fff',
+                  border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  zIndex: 20, minWidth: 180, overflow: 'hidden',
+                }}>
+                  <button onClick={() => handleExport('/api/contacts/export/csv', 'contacts.csv')}
+                    disabled={exporting}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
+                      textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    CSV 格式
+                  </button>
+                  <button onClick={() => handleExport('/api/contacts/export/vcard', 'contacts.vcf')}
+                    disabled={exporting}
+                    style={{ display: 'block', width: '100%', padding: '10px 14px', border: 'none', background: 'transparent',
+                      textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151', borderTop: '1px solid #f1f5f9' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    vCard (.vcf)
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Google / iPhone 聯絡人</div>
+                  </button>
+                </div>
+              )}
+            </div>
+            <span style={{ fontSize: 13, color: '#94a3b8' }}>共 {total} 位</span>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '14px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -231,14 +285,26 @@ function ListTab({ categories }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))', gap: 14 }}>
-          {items.map(item => (
-            <div key={item.id} style={{
-              border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px',
-              background: '#fff', transition: 'box-shadow 0.15s',
+          {items.map(item => {
+            const isSelected = selectedIds.has(item.id);
+            return (
+            <div key={item.id}
+              onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+              style={{
+              border: isSelected ? '2px solid #3b82f6' : '1px solid #e2e8f0', borderRadius: 12, padding: isSelected ? '13px 15px' : '14px 16px',
+              background: isSelected ? '#eff6ff' : '#fff', transition: 'all 0.15s',
               boxShadow: expanded === item.id ? '0 4px 12px rgba(0,0,0,0.08)' : 'none',
+              cursor: selectMode ? 'pointer' : 'default',
             }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                {selectMode && (
+                  <div style={{ flexShrink: 0, marginTop: 4 }}>
+                    {isSelected
+                      ? <CheckSquare size={20} color="#3b82f6" />
+                      : <Square size={20} color="#cbd5e1" />}
+                  </div>
+                )}
                 <div style={{
                   width: 40, height: 40, borderRadius: '50%',
                   background: item.category_color || '#e2e8f0', color: '#fff',
@@ -367,7 +433,8 @@ function ListTab({ categories }) {
                 </div>
               )}
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
     </div>

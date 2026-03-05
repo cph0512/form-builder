@@ -234,9 +234,13 @@ function contactToVCard(c) {
 
 router.get('/export/vcard', async (req, res) => {
   try {
-    const { id } = req.query;
+    const { id, ids } = req.query;
     let rows;
-    if (id) {
+    if (ids) {
+      const idArr = ids.split(',').filter(Boolean);
+      const result = await pool.query('SELECT * FROM contacts WHERE id = ANY($1::uuid[]) AND is_active=true', [idArr]);
+      rows = result.rows;
+    } else if (id) {
       const result = await pool.query('SELECT * FROM contacts WHERE id=$1 AND is_active=true', [id]);
       rows = result.rows;
     } else {
@@ -441,11 +445,18 @@ router.post('/:id/sync-crm', async (req, res) => {
 
 router.get('/export/csv', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT c.*, cat.name as category_name
+    const { ids } = req.query;
+    let queryText = `SELECT c.*, cat.name as category_name
        FROM contacts c LEFT JOIN contact_categories cat ON c.category_id=cat.id
-       WHERE c.is_active=true ORDER BY c.created_at DESC`
-    );
+       WHERE c.is_active=true`;
+    const params = [];
+    if (ids) {
+      const idArr = ids.split(',').filter(Boolean);
+      params.push(idArr);
+      queryText += ` AND c.id = ANY($1::uuid[])`;
+    }
+    queryText += ` ORDER BY c.created_at DESC`;
+    const { rows } = await pool.query(queryText, params);
 
     const header = '姓名,公司,職稱,Email,電話,地址,網站,分類,備註';
     const lines = rows.map(r => {
