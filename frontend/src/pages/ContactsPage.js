@@ -514,13 +514,18 @@ function ScanTab({ categories, onSaved }) {
     try {
       const fd = new FormData();
       files.forEach(f => fd.append('pdfs', f));
-      setBatchProgress(`AI 正在辨識所有名片（約 ${files.length * 30}-${files.length * 60} 秒）...`);
-      const { data } = await axios.post('/api/contacts/scan-batch', fd, { timeout: 300000 });
+      setBatchProgress(`AI 正在辨識所有名片，若遇配額限制會自動重試（約 1-3 分鐘）...`);
+      const { data } = await axios.post('/api/contacts/scan-batch', fd, { timeout: 600000 });
       setBatchResults(data);
       setSelectedBatch(new Set(data.contacts.map((_, i) => i)));
       toast.success(`找到 ${data.total_cards_found} 張名片！`);
     } catch (err) {
-      toast.error('批次掃描失敗：' + (err.response?.data?.error || err.message));
+      const errData = err.response?.data;
+      if (errData?.retryable || err.response?.status === 429) {
+        toast.error('AI 配額暫時超額，請等候 1-2 分鐘後再試一次', { duration: 6000 });
+      } else {
+        toast.error('批次掃描失敗：' + (errData?.error || err.message));
+      }
       setBatchMode(false);
     } finally {
       setScanning(false);

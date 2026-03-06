@@ -164,7 +164,14 @@ router.post('/scan-batch', uploadPdf.array('pdfs', 5), async (req, res) => {
     });
   } catch (err) {
     console.error('[contacts/scan-batch]', err.message);
-    res.status(500).json({ error: `批次掃描失敗：${err.message}` });
+    const msg = err.message || '';
+    if (msg.includes('429') || msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED')) {
+      return res.status(429).json({
+        error: 'AI 配額已達上限，系統已嘗試自動重試但仍然超額。請等候 1-2 分鐘後再試。',
+        retryable: true,
+      });
+    }
+    res.status(500).json({ error: `批次掃描失敗：${msg}` });
   }
 });
 
