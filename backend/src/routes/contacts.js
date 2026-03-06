@@ -27,6 +27,15 @@ const upload = multer({
   },
 });
 
+// PDF 批次上傳 multer
+const uploadPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 60 * 1024 * 1024 }, // 60MB
+  fileFilter: (req, file, cb) => {
+    cb(null, file.mimetype === 'application/pdf');
+  },
+});
+
 // 所有路由需登入 + contacts_manage 權限
 router.use(authenticateToken, requirePermission('contacts_manage'));
 
@@ -121,6 +130,41 @@ router.post('/scan', upload.single('image'), async (req, res) => {
   } catch (err) {
     console.error('[contacts/scan]', err.message);
     res.status(500).json({ error: `名片解析失敗：${err.message}` });
+  }
+});
+
+// ─── PDF 批次掃描 ─────────────────────────────────────────────────────────────
+router.post('/scan-batch', uploadPdf.array('pdfs', 5), async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: '請上傳 PDF 檔案（最多 5 個，每個最大 60MB）' });
+  }
+
+  try {
+    const allContacts = [];
+    let totalPages = 0;
+
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
+      console.log(`[scan-batch] 處理第 ${i + 1}/${req.files.length} 個 PDF (${(file.size / 1024 / 1024).toFixed(1)}MB)...`);
+
+      const result = await aiService.parseBusinessCardsBatch(file.buffer);
+      if (result && result.contacts) {
+        // 標記來源 PDF
+        result.contacts.forEach(c => { c.source_pdf = file.originalname; });
+        allContacts.push(...result.contacts);
+        totalPages += result.total_pages_scanned || 0;
+      }
+    }
+
+    res.json({
+      contacts: allContacts,
+      total_cards_found: allContacts.length,
+      total_pages_scanned: totalPages,
+      total_pdfs: req.files.length,
+    });
+  } catch (err) {
+    console.error('[contacts/scan-batch]', err.message);
+    res.status(500).json({ error: `批次掃描失敗：${err.message}` });
   }
 });
 

@@ -12,6 +12,7 @@
 let openaiClient = null;
 let anthropicClient = null;
 let geminiClient = null;
+let geminiFileManager = null;
 
 function getProvider() {
   return (process.env.AI_PROVIDER || 'gemini').toLowerCase();
@@ -518,6 +519,136 @@ async function parseBusinessCardGemini(base64, mimeType) {
 async function parseBusinessCardOpenAI(base64, mimeType) { /* TODO */ return null; }
 async function parseBusinessCardClaude(base64, mimeType) { /* TODO */ return null; }
 
+// ─── PDF 批次名片掃描 ────────────────────────────────────────────────────────
+
+function getFileManager() {
+  if (!process.env.GEMINI_API_KEY) return null;
+  if (!geminiFileManager) {
+    const { GoogleAIFileManager } = require('@google/generative-ai/server');
+    geminiFileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+  }
+  return geminiFileManager;
+}
+
+const BUSINESS_CARD_BATCH_PROMPT = `你是一個專業的名片辨識系統。這個 PDF 文件包含多頁名片，每一頁可能有一張或多張名片。
+
+請仔細分析每一頁中的所有名片，提取所有可見的聯絡資訊。
+
+請以下面的 JSON 格式回傳結果，不要有多餘的文字說明：
+
+\`\`\`json
+{
+  "contacts": [
+    {
+      "page": 1,
+      "contact": {
+        "full_name": "完整姓名",
+        "first_name": "名",
+        "last_name": "姓",
+        "company": "公司名稱",
+        "job_title": "職稱",
+        "department": "部門（若有）",
+        "emails": [
+          { "value": "email@example.com", "label": "工作", "is_primary": true }
+        ],
+        "phones": [
+          { "value": "+886-2-1234-5678", "label": "公司電話", "is_primary": true },
+          { "value": "0912-345-678", "label": "手機", "is_primary": false }
+        ],
+        "address": "完整地址",
+        "website": "https://www.example.com",
+        "social_profiles": { "linkedin": "", "line_id": "", "facebook": "" }
+      },
+      "suggested_category": "客戶",
+      "confidence": 0.95,
+      "notes": "任何額外觀察"
+    }
+  ],
+  "total_cards_found": 5,
+  "total_pages_scanned": 10
+}
+\`\`\`
+
+重要規則：
+1. 每張名片對應 contacts 陣列的一個元素。如果一頁有多張名片，請分別提取。
+2. page 欄位記錄該名片位於 PDF 的第幾頁（從 1 開始）。
+3. 姓名：中文名片姓在前名在後。英文名片 first_name 是 given name，last_name 是 family name。full_name 保留原始格式。
+4. 電話：保留名片上的原始格式。用 label 標記類型（公司電話、手機、傳真等）。
+5. confidence：0.0-1.0，反映辨識準確度。
+6. suggested_category：根據公司和職稱推測，只能是：客戶、供應商、合作夥伴、同業、其他。
+7. 找不到的欄位設為空字串或空陣列，不要猜測。
+8. 保留名片上的原始語言，不要翻譯。
+
+請只回傳 JSON。`;
+
+async function parseBusinessCardsBatch(pdfBuffer) {
+  const provider = getProvider();
+  if (provider !== 'gemini') {
+    throw new Error('PDF 批次掃描目前只支援 Gemini AI 引擎');
+  }
+
+  const fm = getFileManager();
+  const genAI = getGemini();
+  if (!fm || !genAI) throw new Error('Gemini API 未設定');
+
+  // 1. 上傳 PDF 到 Gemini File API
+  console.log('[scan-batch] 上傳 PDF 到 Gemini File API...');
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+
+  // 寫入暫存檔（GoogleAIFileManager 需要檔案路徑）
+  const tmpPath = path.join(os.tmpdir(), `batch_cards_${Date.now()}.pdf`);
+  fs.writeFileSync(tmpPath, pdfBuffer);
+
+  try {
+    const uploadResult = await fm.uploadFile(tmpPath, {
+      mimeType: 'application/pdf',
+      displayName: `batch_cards_${Date.now()}.pdf`,
+    });
+
+    // 2. 輪詢等待檔案處理完成
+    let file = uploadResult.file;
+    const maxWait = 120_000;
+    const pollInterval = 3_000;
+    let waited = 0;
+    console.log('[scan-batch] 等待 Gemini 處理 PDF...', file.state);
+    while (file.state === 'PROCESSING' && waited < maxWait) {
+      await new Promise(r => setTimeout(r, pollInterval));
+      file = await fm.getFile(file.name);
+      waited += pollInterval;
+      console.log(`[scan-batch] 狀態: ${file.state} (${waited / 1000}s)`);
+    }
+    if (file.state !== 'ACTIVE') {
+      throw new Error(`PDF 處理失敗：${file.state}`);
+    }
+
+    // 3. 傳給 Gemini 分析
+    console.log('[scan-batch] 送出 AI 辨識請求...');
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    const result = await model.generateContent([
+      BUSINESS_CARD_BATCH_PROMPT,
+      { fileData: { mimeType: file.mimeType, fileUri: file.uri } },
+    ]);
+
+    const text = result.response.text();
+    console.log('[scan-batch] AI 回傳長度:', text.length);
+
+    // 4. 解析 JSON
+    const jsonMatch = text.match(/```json\s*([\s\S]*?)```/) || text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('AI 回傳格式無法解析');
+    const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+
+    // 5. 刪除暫存檔案
+    fm.deleteFile(file.name).catch(() => {});
+
+    return parsed;
+  } finally {
+    // 清理本地暫存檔
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
+}
+
 // ─── 公開介面 ─────────────────────────────────────────────────────────────────
 
 module.exports = {
@@ -525,6 +656,7 @@ module.exports = {
   summarize,
   parseImage,
   parseBusinessCard,
+  parseBusinessCardsBatch,
   OPENAI_TOOLS,
   ANTHROPIC_TOOLS,
   GEMINI_TOOLS,

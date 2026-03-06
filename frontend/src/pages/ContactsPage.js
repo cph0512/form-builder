@@ -5,7 +5,7 @@ import {
   Search, Camera, Upload, Star, StarOff, Edit2, Trash2,
   Plus, X, ChevronDown, ChevronUp, Globe, Phone, Mail, Building2,
   User, MapPin, Save, Loader, AlertTriangle, Download, CheckSquare, Square,
-  Smartphone, Chrome,
+  Smartphone, Chrome, FileText,
 } from 'lucide-react';
 
 // ─── 常數 ──────────────────────────────────────────────────────────────────────
@@ -474,6 +474,15 @@ function ScanTab({ categories, onSaved }) {
   const [form, setForm]         = useState(null);
   const cameraRef = useRef(null);
   const fileRef   = useRef(null);
+  const pdfRef    = useRef(null);
+
+  // ─── 批次 PDF 掃描 state ───
+  const [batchMode, setBatchMode]           = useState(false);
+  const [batchResults, setBatchResults]     = useState(null);
+  const [batchSaving, setBatchSaving]       = useState(false);
+  const [batchProgress, setBatchProgress]   = useState('');
+  const [selectedBatch, setSelectedBatch]   = useState(new Set());
+  const [saveProgress, setSaveProgress]     = useState('');
 
   const handleFileChange = (e) => {
     const f = e.target.files?.[0];
@@ -482,6 +491,81 @@ function ScanTab({ categories, onSaved }) {
     setPreview(URL.createObjectURL(f));
     setResult(null);
     setForm(null);
+  };
+
+  // ─── PDF 批次掃描邏輯 ───
+  const handlePdfUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    if (files.length > 5) {
+      toast.error('一次最多上傳 5 個 PDF');
+      return;
+    }
+    const tooBig = files.find(f => f.size > 60 * 1024 * 1024);
+    if (tooBig) {
+      toast.error(`「${tooBig.name}」超過 60MB 限制`);
+      return;
+    }
+
+    setBatchMode(true);
+    setScanning(true);
+    setBatchProgress(`上傳 ${files.length} 個 PDF 中...`);
+
+    try {
+      const fd = new FormData();
+      files.forEach(f => fd.append('pdfs', f));
+      setBatchProgress(`AI 正在辨識所有名片（約 ${files.length * 30}-${files.length * 60} 秒）...`);
+      const { data } = await axios.post('/api/contacts/scan-batch', fd, { timeout: 300000 });
+      setBatchResults(data);
+      setSelectedBatch(new Set(data.contacts.map((_, i) => i)));
+      toast.success(`找到 ${data.total_cards_found} 張名片！`);
+    } catch (err) {
+      toast.error('批次掃描失敗：' + (err.response?.data?.error || err.message));
+      setBatchMode(false);
+    } finally {
+      setScanning(false);
+      setBatchProgress('');
+      if (pdfRef.current) pdfRef.current.value = '';
+    }
+  };
+
+  const handleBatchSave = async () => {
+    const toSave = batchResults.contacts.filter((_, i) => selectedBatch.has(i));
+    if (toSave.length === 0) { toast.error('請至少選擇一張名片'); return; }
+
+    setBatchSaving(true);
+    let saved = 0, failed = 0;
+
+    for (const item of toSave) {
+      setSaveProgress(`儲存中 ${saved + failed + 1}/${toSave.length}...`);
+      try {
+        const c = item.contact || {};
+        const catMatch = categories.find(cat => cat.name === item.suggested_category);
+        await axios.post('/api/contacts', {
+          full_name: c.full_name || '', first_name: c.first_name || '', last_name: c.last_name || '',
+          company: c.company || '', job_title: c.job_title || '', department: c.department || '',
+          emails: c.emails || [], phones: c.phones || [],
+          address: c.address || '', website: c.website || '',
+          social_profiles: c.social_profiles || {},
+          category_id: catMatch?.id || '', tags: [], notes: item.notes || '',
+          source_type: 'scan',
+          ai_confidence: item.confidence || 0,
+          ai_suggested_category: item.suggested_category || '其他',
+        });
+        saved++;
+      } catch { failed++; }
+    }
+
+    setBatchSaving(false);
+    setSaveProgress('');
+    toast.success(failed > 0 ? `已儲存 ${saved} 位，${failed} 位失敗` : `已儲存全部 ${saved} 位聯絡人！`);
+    setBatchMode(false); setBatchResults(null); setSelectedBatch(new Set());
+    onSaved();
+  };
+
+  const exitBatch = () => {
+    setBatchMode(false); setBatchResults(null); setSelectedBatch(new Set());
+    setBatchProgress(''); setSaveProgress('');
   };
 
   // 送 AI 辨識
@@ -562,8 +646,132 @@ function ScanTab({ categories, onSaved }) {
         onChange={handleFileChange} style={{ display: 'none' }} />
       <input ref={fileRef} type="file" accept="image/*"
         onChange={handleFileChange} style={{ display: 'none' }} />
+      <input ref={pdfRef} type="file" accept=".pdf" multiple
+        onChange={handlePdfUpload} style={{ display: 'none' }} />
     </>
   );
+
+  // ─── 批次掃描中 ───
+  if (batchMode && scanning) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        {hiddenInputs}
+        <Loader size={40} color="#3b82f6" style={{ animation: 'spin 1s linear infinite', marginBottom: 16 }} />
+        <p style={{ fontSize: 16, fontWeight: 600, color: '#1e40af', margin: 0 }}>{batchProgress}</p>
+        <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>請勿關閉頁面</p>
+      </div>
+    );
+  }
+
+  // ─── 批次結果 review ───
+  if (batchMode && batchResults) {
+    const contacts = batchResults.contacts || [];
+    return (
+      <div>
+        {hiddenInputs}
+        <div style={{ marginBottom: 16, padding: '12px 16px', background: '#ecfdf5', borderRadius: 10, border: '1px solid #a7f3d0' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#065f46' }}>
+            找到 {batchResults.total_cards_found} 張名片
+          </div>
+          <div style={{ fontSize: 12, color: '#047857', marginTop: 2 }}>
+            共掃描 {batchResults.total_pages_scanned} 頁 · {batchResults.total_pdfs || 1} 個 PDF
+          </div>
+        </div>
+
+        {/* toolbar */}
+        <div style={{
+          display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center',
+          padding: '8px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0',
+        }}>
+          <button onClick={() => setSelectedBatch(new Set(contacts.map((_, i) => i)))}
+            style={{ ...smBtn, color: '#3b82f6' }}>
+            <CheckSquare size={13} /> 全選
+          </button>
+          <button onClick={() => setSelectedBatch(new Set())}
+            style={smBtn}>取消全選</button>
+          <span style={{ fontSize: 13, fontWeight: 600, color: '#1e40af', marginLeft: 'auto' }}>
+            已選 {selectedBatch.size} / {contacts.length}
+          </span>
+        </div>
+
+        {/* 名片列表 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {contacts.map((item, idx) => {
+            const c = item.contact || {};
+            const sel = selectedBatch.has(idx);
+            const conf = Math.round((item.confidence || 0) * 100);
+            const primaryEmail = (c.emails || [])[0]?.value || '';
+            const primaryPhone = (c.phones || [])[0]?.value || '';
+            return (
+              <div key={idx} onClick={() => {
+                setSelectedBatch(prev => {
+                  const next = new Set(prev);
+                  next.has(idx) ? next.delete(idx) : next.add(idx);
+                  return next;
+                });
+              }} style={{
+                display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                border: sel ? '2px solid #3b82f6' : '1px solid #e2e8f0',
+                background: sel ? '#eff6ff' : '#fff', transition: 'all 0.15s',
+              }}>
+                <div style={{ flexShrink: 0, marginTop: 2 }}>
+                  {sel ? <CheckSquare size={20} color="#3b82f6" /> : <Square size={20} color="#cbd5e1" />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
+                      {c.full_name || c.company || '（未辨識）'}
+                    </span>
+                    <span style={{
+                      fontSize: 11, padding: '1px 6px', borderRadius: 999,
+                      background: conf >= 80 ? '#ecfdf5' : conf >= 50 ? '#fffbeb' : '#fef2f2',
+                      color: conf >= 80 ? '#059669' : conf >= 50 ? '#d97706' : '#dc2626',
+                    }}>{conf}%</span>
+                  </div>
+                  {(c.company || c.job_title) && (
+                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
+                      {[c.company, c.job_title].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {primaryEmail && <span><Mail size={10} style={{ verticalAlign: -1 }} /> {primaryEmail}</span>}
+                    {primaryPhone && <span><Phone size={10} style={{ verticalAlign: -1 }} /> {primaryPhone}</span>}
+                  </div>
+                  {item.suggested_category && (
+                    <span style={{
+                      display: 'inline-block', fontSize: 11, padding: '1px 8px', borderRadius: 999,
+                      background: '#f1f5f9', color: '#64748b', marginTop: 4,
+                    }}>📁 {item.suggested_category}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>P.{item.page}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 底部操作 */}
+        <div style={{
+          marginTop: 20, display: 'flex', gap: 10,
+          position: 'sticky', bottom: 0, background: '#f8fafc', padding: '12px 0',
+        }}>
+          <button onClick={exitBatch} style={{
+            flex: 1, padding: '12px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+            background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer',
+          }}>取消</button>
+          <button onClick={handleBatchSave} disabled={batchSaving || selectedBatch.size === 0} style={{
+            flex: 2, padding: '12px', fontSize: 15, fontWeight: 700, borderRadius: 10,
+            background: selectedBatch.size === 0 ? '#94a3b8' : '#3b82f6', color: '#fff',
+            border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+          }}>
+            {batchSaving
+              ? <><Loader size={16} style={{ animation: 'spin 1s linear infinite' }} /> {saveProgress}</>
+              : <><Save size={16} /> 儲存已選的 {selectedBatch.size} 位聯絡人</>}
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -600,6 +808,18 @@ function ScanTab({ categories, onSaved }) {
                 }}>
                   <Plus size={18} /> 手動新增
                 </button>
+              </div>
+
+              {/* PDF 批次掃描 */}
+              <button onClick={() => pdfRef.current?.click()} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                padding: '14px 16px', fontSize: 14, fontWeight: 600, borderRadius: 12,
+                background: '#fef3c7', color: '#92400e', border: '1px solid #fde68a', cursor: 'pointer',
+              }}>
+                <FileText size={18} /> 批次掃描 PDF 名片
+              </button>
+              <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8', marginTop: -4 }}>
+                每個 PDF 最大 60MB，一次最多 5 個
               </div>
 
               {/* 說明 */}
