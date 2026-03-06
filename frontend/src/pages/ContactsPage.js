@@ -483,6 +483,9 @@ function ScanTab({ categories, onSaved }) {
   const [batchProgress, setBatchProgress]   = useState('');
   const [selectedBatch, setSelectedBatch]   = useState(new Set());
   const [saveProgress, setSaveProgress]     = useState('');
+  // ─── 重複偵測 state ───
+  const [dupDialog, setDupDialog]           = useState(null);   // { items: [...], onResolve }
+  const [singleDupDialog, setSingleDupDialog] = useState(null); // { contact, duplicates, onResolve }
 
   const handleFileChange = (e) => {
     const f = e.target.files?.[0];
@@ -534,19 +537,23 @@ function ScanTab({ categories, onSaved }) {
     }
   };
 
-  const handleBatchSave = async () => {
-    const toSave = batchResults.contacts.filter((_, i) => selectedBatch.has(i));
-    if (toSave.length === 0) { toast.error('請至少選擇一張名片'); return; }
-
+  // 實際儲存（帶 overwrite 支援）
+  const executeBatchSave = async (toSave, overwriteMap = {}) => {
     setBatchSaving(true);
-    let saved = 0, failed = 0;
+    let saved = 0, overwritten = 0, skipped = 0, failed = 0;
 
-    for (const item of toSave) {
-      setSaveProgress(`儲存中 ${saved + failed + 1}/${toSave.length}...`);
+    for (let i = 0; i < toSave.length; i++) {
+      const item = toSave[i];
+      setSaveProgress(`儲存中 ${i + 1}/${toSave.length}...`);
+      const c = item.contact || {};
+      const key = c.full_name || c.company || `idx_${i}`;
+      const action = overwriteMap[key]; // 'overwrite' | 'skip' | undefined (= create new)
+
+      if (action === 'skip') { skipped++; continue; }
+
       try {
-        const c = item.contact || {};
         const catMatch = categories.find(cat => cat.name === item.suggested_category);
-        await axios.post('/api/contacts', {
+        const payload = {
           full_name: c.full_name || '', first_name: c.first_name || '', last_name: c.last_name || '',
           company: c.company || '', job_title: c.job_title || '', department: c.department || '',
           emails: c.emails || [], phones: c.phones || [],
@@ -556,16 +563,61 @@ function ScanTab({ categories, onSaved }) {
           source_type: 'scan',
           ai_confidence: item.confidence || 0,
           ai_suggested_category: item.suggested_category || '其他',
-        });
-        saved++;
+        };
+        if (action === 'overwrite' && item._overwriteId) {
+          payload.overwrite_id = item._overwriteId;
+        }
+        await axios.post('/api/contacts', payload);
+        if (action === 'overwrite') overwritten++;
+        else saved++;
       } catch { failed++; }
     }
 
     setBatchSaving(false);
     setSaveProgress('');
-    toast.success(failed > 0 ? `已儲存 ${saved} 位，${failed} 位失敗` : `已儲存全部 ${saved} 位聯絡人！`);
+    const parts = [];
+    if (saved > 0) parts.push(`新增 ${saved} 位`);
+    if (overwritten > 0) parts.push(`覆蓋 ${overwritten} 位`);
+    if (skipped > 0) parts.push(`跳過 ${skipped} 位`);
+    if (failed > 0) parts.push(`失敗 ${failed} 位`);
+    toast.success(parts.join('，'));
     setBatchMode(false); setBatchResults(null); setSelectedBatch(new Set());
     onSaved();
+  };
+
+  const handleBatchSave = async () => {
+    const toSave = batchResults.contacts.filter((_, i) => selectedBatch.has(i));
+    if (toSave.length === 0) { toast.error('請至少選擇一張名片'); return; }
+
+    // 先呼叫後端檢查重複
+    setBatchSaving(true);
+    setSaveProgress('檢查重複聯絡人...');
+    try {
+      const checkPayload = toSave.map(item => {
+        const c = item.contact || {};
+        return { full_name: c.full_name, emails: c.emails, phones: c.phones };
+      });
+      const { data } = await axios.post('/api/contacts/check-duplicates', { contacts: checkPayload });
+
+      if (data.has_duplicates) {
+        setBatchSaving(false);
+        setSaveProgress('');
+        // 顯示重複對話框
+        setDupDialog({
+          items: data.duplicates.map(d => ({
+            ...d,
+            newContact: toSave[d.index],
+          })),
+          toSave,
+        });
+        return;
+      }
+    } catch (err) {
+      console.error('重複檢查失敗，直接儲存', err);
+    }
+
+    // 沒有重複，直接儲存
+    await executeBatchSave(toSave);
   };
 
   const exitBatch = () => {
@@ -606,29 +658,56 @@ function ScanTab({ categories, onSaved }) {
     }
   };
 
-  // 儲存聯絡人
-  const handleSave = async () => {
-    if (!form) return;
-    if (!form.full_name && !form.company) {
-      toast.error('姓名或公司至少填一個');
-      return;
-    }
+  // 實際執行儲存
+  const executeSingleSave = async (overwriteId = null) => {
     setSaving(true);
     try {
-      await axios.post('/api/contacts', {
+      const payload = {
         ...form,
         source_type: result ? 'scan' : 'manual',
         source_image_url: result?.image_url || null,
         ai_raw_result: result?.raw_result || null,
         ai_confidence: result?.confidence || null,
         ai_suggested_category: result?.suggested_category || null,
-      });
-      toast.success('聯絡人已儲存！');
+      };
+      if (overwriteId) payload.overwrite_id = overwriteId;
+      await axios.post('/api/contacts', payload);
+      toast.success(overwriteId ? '已覆蓋更新聯絡人！' : '聯絡人已儲存！');
       setFile(null); setPreview(''); setResult(null); setForm(null);
       onSaved();
     } catch (err) {
       toast.error('儲存失敗：' + (err.response?.data?.error || err.message));
     } finally { setSaving(false); }
+  };
+
+  // 儲存聯絡人（帶重複檢查）
+  const handleSave = async () => {
+    if (!form) return;
+    if (!form.full_name && !form.company) {
+      toast.error('姓名或公司至少填一個');
+      return;
+    }
+
+    // 先檢查重複
+    setSaving(true);
+    try {
+      const { data } = await axios.post('/api/contacts/check-duplicates', {
+        contacts: [{ full_name: form.full_name, emails: form.emails, phones: form.phones }],
+      });
+      if (data.has_duplicates && data.duplicates.length > 0) {
+        setSaving(false);
+        const dup = data.duplicates[0];
+        setSingleDupDialog({
+          contact: form,
+          duplicates: dup.duplicates,
+        });
+        return;
+      }
+    } catch (err) {
+      console.error('重複檢查失敗，直接儲存', err);
+    }
+
+    await executeSingleSave();
   };
 
   // 手動新增（不掃描）
@@ -992,6 +1071,212 @@ function ScanTab({ categories, onSaved }) {
           </div>
         </div>
       )}
+
+      {/* ═══ 單筆重複對話框 ═══ */}
+      {singleDupDialog && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 16, padding: '24px 20px', maxWidth: 440,
+            width: '100%', maxHeight: '80vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+              <AlertTriangle size={20} color="#f59e0b" />
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#92400e' }}>偵測到重複聯絡人</h3>
+            </div>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
+              「<b>{singleDupDialog.contact.full_name}</b>」與以下既有聯絡人可能重複：
+            </p>
+            {singleDupDialog.duplicates.map(dup => (
+              <div key={dup.id} style={{
+                padding: '10px 12px', borderRadius: 8, background: '#fefce8',
+                border: '1px solid #fde68a', marginBottom: 8,
+              }}>
+                <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{dup.full_name}</div>
+                {dup.company && <div style={{ fontSize: 12, color: '#64748b' }}>{dup.company}{dup.job_title ? ` · ${dup.job_title}` : ''}</div>}
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                  {(dup.emails || []).map(e => e.value).filter(Boolean).join(', ')}
+                  {(dup.phones || []).map(p => p.value).filter(Boolean).join(', ')}
+                </div>
+              </div>
+            ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 16 }}>
+              <button onClick={() => {
+                const overwriteId = singleDupDialog.duplicates[0].id;
+                setSingleDupDialog(null);
+                executeSingleSave(overwriteId);
+              }} style={{
+                padding: '11px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                background: '#f59e0b', color: '#fff', border: 'none', cursor: 'pointer',
+              }}>🔄 覆蓋更新既有聯絡人</button>
+              <button onClick={() => {
+                setSingleDupDialog(null);
+                executeSingleSave();
+              }} style={{
+                padding: '11px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                background: '#3b82f6', color: '#fff', border: 'none', cursor: 'pointer',
+              }}>➕ 仍然新增（不覆蓋）</button>
+              <button onClick={() => setSingleDupDialog(null)} style={{
+                padding: '11px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer',
+              }}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ 批次重複對話框 ═══ */}
+      {dupDialog && (() => {
+        const DupDialogInner = () => {
+          const [decisions, setDecisions] = useState({});
+          const allItems = dupDialog.items;
+
+          const setDecision = (key, val, overwriteId) => {
+            setDecisions(prev => ({ ...prev, [key]: { action: val, overwriteId } }));
+          };
+
+          const handleConfirm = () => {
+            const overwriteMap = {};
+            const toSaveUpdated = dupDialog.toSave.map((item, i) => {
+              const c = item.contact || {};
+              const key = c.full_name || c.company || `idx_${i}`;
+              const decision = decisions[key];
+              if (decision) {
+                overwriteMap[key] = decision.action;
+                if (decision.action === 'overwrite' && decision.overwriteId) {
+                  return { ...item, _overwriteId: decision.overwriteId };
+                }
+              }
+              return item;
+            });
+            setDupDialog(null);
+            executeBatchSave(toSaveUpdated, overwriteMap);
+          };
+
+          const allDecided = allItems.every(item => {
+            const c = item.newContact?.contact || {};
+            const key = c.full_name || c.company || `idx_${item.index}`;
+            return !!decisions[key];
+          });
+
+          const setAllOverwrite = () => {
+            const d = {};
+            allItems.forEach(item => {
+              const c = item.newContact?.contact || {};
+              const key = c.full_name || c.company || `idx_${item.index}`;
+              d[key] = { action: 'overwrite', overwriteId: item.duplicates[0]?.id };
+            });
+            setDecisions(d);
+          };
+          const setAllSkip = () => {
+            const d = {};
+            allItems.forEach(item => {
+              const c = item.newContact?.contact || {};
+              const key = c.full_name || c.company || `idx_${item.index}`;
+              d[key] = { action: 'skip' };
+            });
+            setDecisions(d);
+          };
+          const setAllNew = () => {
+            const d = {};
+            allItems.forEach(item => {
+              const c = item.newContact?.contact || {};
+              const key = c.full_name || c.company || `idx_${item.index}`;
+              d[key] = { action: 'new' };
+            });
+            setDecisions(d);
+          };
+
+          return (
+            <div style={{
+              position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+              background: 'rgba(0,0,0,0.5)', zIndex: 9999,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            }}>
+              <div style={{
+                background: '#fff', borderRadius: 16, padding: '20px 16px', maxWidth: 500,
+                width: '100%', maxHeight: '85vh', overflow: 'auto', boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                  <AlertTriangle size={20} color="#f59e0b" />
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#92400e' }}>
+                    偵測到 {allItems.length} 筆重複聯絡人
+                  </h3>
+                </div>
+                <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>
+                  請為每位重複聯絡人選擇處理方式：
+                </p>
+
+                {/* 快速操作 */}
+                <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                  <button onClick={setAllOverwrite} style={{ ...smBtn, fontSize: 12, color: '#f59e0b' }}>全部覆蓋</button>
+                  <button onClick={setAllSkip} style={{ ...smBtn, fontSize: 12, color: '#ef4444' }}>全部跳過</button>
+                  <button onClick={setAllNew} style={{ ...smBtn, fontSize: 12, color: '#3b82f6' }}>全部新增</button>
+                </div>
+
+                {allItems.map((item, idx) => {
+                  const c = item.newContact?.contact || {};
+                  const key = c.full_name || c.company || `idx_${item.index}`;
+                  const existing = item.duplicates[0] || {};
+                  const decision = decisions[key]?.action;
+
+                  return (
+                    <div key={idx} style={{
+                      padding: '12px', borderRadius: 10, marginBottom: 10,
+                      border: '1px solid #e2e8f0', background: '#fafbfc',
+                    }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a', marginBottom: 4 }}>
+                        {c.full_name || c.company}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 2 }}>
+                        新：{[c.company, c.job_title].filter(Boolean).join(' · ') || '—'}
+                      </div>
+                      <div style={{
+                        fontSize: 12, color: '#94a3b8', padding: '6px 8px', borderRadius: 6,
+                        background: '#fefce8', border: '1px solid #fde68a', marginBottom: 8,
+                      }}>
+                        ⚠️ 既有：{existing.full_name}
+                        {existing.company ? ` · ${existing.company}` : ''}
+                        {(existing.phones || []).slice(0, 1).map(p => ` · ${p.value}`)}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        {[
+                          { val: 'overwrite', label: '覆蓋', color: '#f59e0b', bg: '#fffbeb' },
+                          { val: 'skip', label: '跳過', color: '#ef4444', bg: '#fef2f2' },
+                          { val: 'new', label: '仍新增', color: '#3b82f6', bg: '#eff6ff' },
+                        ].map(opt => (
+                          <button key={opt.val} onClick={() => setDecision(key, opt.val, existing.id)} style={{
+                            flex: 1, padding: '6px 8px', fontSize: 12, fontWeight: 600, borderRadius: 8,
+                            background: decision === opt.val ? opt.color : opt.bg,
+                            color: decision === opt.val ? '#fff' : opt.color,
+                            border: `1px solid ${opt.color}40`, cursor: 'pointer', transition: 'all 0.15s',
+                          }}>{opt.label}</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div style={{ display: 'flex', gap: 10, marginTop: 16, position: 'sticky', bottom: 0, background: '#fff', paddingTop: 8 }}>
+                  <button onClick={() => setDupDialog(null)} style={{
+                    flex: 1, padding: '11px', fontSize: 14, fontWeight: 600, borderRadius: 10,
+                    background: '#f1f5f9', color: '#64748b', border: '1px solid #e2e8f0', cursor: 'pointer',
+                  }}>取消</button>
+                  <button onClick={handleConfirm} disabled={!allDecided} style={{
+                    flex: 2, padding: '11px', fontSize: 14, fontWeight: 700, borderRadius: 10,
+                    background: allDecided ? '#3b82f6' : '#94a3b8', color: '#fff',
+                    border: 'none', cursor: allDecided ? 'pointer' : 'not-allowed',
+                  }}>確認處理 {allItems.length} 筆重複</button>
+                </div>
+              </div>
+            </div>
+          );
+        };
+        return <DupDialogInner />;
+      })()}
     </div>
   );
 }

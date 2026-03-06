@@ -327,13 +327,85 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 新增
+// ─── 重複偵測工具 ─────────────────────────────────────────────────────────────
+async function findDuplicates(userId, { full_name, emails, phones }) {
+  const conditions = [];
+  const params = [userId];
+  let idx = 2;
+
+  // 1. 完全同名
+  if (full_name) {
+    conditions.push(`LOWER(full_name) = LOWER($${idx})`);
+    params.push(full_name);
+    idx++;
+  }
+
+  // 2. email 重複（JSONB 陣列中的 value 欄位比對）
+  if (emails && emails.length > 0) {
+    const emailVals = emails.map(e => (e.value || e).toLowerCase()).filter(Boolean);
+    for (const ev of emailVals) {
+      conditions.push(`EXISTS (SELECT 1 FROM jsonb_array_elements(emails) AS e WHERE LOWER(e->>'value') = $${idx})`);
+      params.push(ev);
+      idx++;
+    }
+  }
+
+  // 3. 電話重複（去除非數字再比對）
+  if (phones && phones.length > 0) {
+    const phoneVals = phones.map(p => (p.value || p).replace(/\D/g, '')).filter(v => v.length >= 6);
+    for (const pv of phoneVals) {
+      conditions.push(`EXISTS (SELECT 1 FROM jsonb_array_elements(phones) AS p WHERE REGEXP_REPLACE(p->>'value', '\\D', '', 'g') = $${idx})`);
+      params.push(pv);
+      idx++;
+    }
+  }
+
+  if (conditions.length === 0) return [];
+
+  const sql = `
+    SELECT id, full_name, company, job_title, emails, phones
+    FROM contacts
+    WHERE created_by = $1 AND is_active = true
+      AND (${conditions.join(' OR ')})
+    LIMIT 5
+  `;
+  const { rows } = await pool.query(sql, params);
+  return rows;
+}
+
+// 批次重複檢查
+router.post('/check-duplicates', async (req, res) => {
+  try {
+    const { contacts } = req.body; // [{ full_name, emails, phones }]
+    if (!Array.isArray(contacts)) return res.status(400).json({ error: '需要 contacts 陣列' });
+
+    const results = [];
+    for (let i = 0; i < contacts.length; i++) {
+      const c = contacts[i];
+      const dups = await findDuplicates(req.user.id, {
+        full_name: c.full_name,
+        emails: c.emails || [],
+        phones: c.phones || [],
+      });
+      if (dups.length > 0) {
+        results.push({ index: i, contact: c, duplicates: dups });
+      }
+    }
+    res.json({ duplicates: results, has_duplicates: results.length > 0 });
+  } catch (err) {
+    console.error('[check-duplicates]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 新增（支援 overwrite_id 覆蓋現有聯絡人）
 router.post('/', async (req, res) => {
   const {
     full_name, first_name, last_name, company, job_title, department,
     emails, phones, address, website, social_profiles,
     category_id, tags, source_type, source_image_url,
     ai_raw_result, ai_confidence, ai_suggested_category, notes,
+    overwrite_id,
   } = req.body;
 
   if (!full_name && !company) {
@@ -341,6 +413,32 @@ router.post('/', async (req, res) => {
   }
 
   try {
+    // 若指定 overwrite_id，更新既有聯絡人
+    if (overwrite_id) {
+      const { rows } = await pool.query(
+        `UPDATE contacts SET
+          full_name=$1, first_name=$2, last_name=$3, company=$4,
+          job_title=$5, department=$6, emails=$7, phones=$8,
+          address=$9, website=$10, social_profiles=$11,
+          category_id=$12, tags=$13, source_type=$14,
+          ai_confidence=$15, ai_suggested_category=$16,
+          notes=$17, updated_at=NOW()
+         WHERE id=$18 AND created_by=$19 AND is_active=true RETURNING *`,
+        [
+          full_name || null, first_name || null, last_name || null,
+          company || null, job_title || null, department || null,
+          JSON.stringify(emails || []), JSON.stringify(phones || []),
+          address || null, website || null, JSON.stringify(social_profiles || {}),
+          category_id || null, tags || [], source_type || 'scan',
+          ai_confidence || null, ai_suggested_category || null,
+          notes || null, overwrite_id, req.user.id,
+        ]
+      );
+      if (!rows[0]) return res.status(404).json({ error: '找不到要覆蓋的聯絡人' });
+      await logAction(pool, req.user.id, 'update_contact', 'contact', rows[0].id, { full_name, action: 'overwrite' }, getIp(req));
+      return res.json(rows[0]);
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO contacts (
         full_name, first_name, last_name, company, job_title, department,
