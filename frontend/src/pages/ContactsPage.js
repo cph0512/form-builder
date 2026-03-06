@@ -518,7 +518,10 @@ function ScanTab({ categories, onSaved }) {
       const fd = new FormData();
       files.forEach(f => fd.append('pdfs', f));
       setBatchProgress(`AI 正在辨識所有名片，若遇配額限制會自動重試（約 1-3 分鐘）...`);
-      const { data } = await axios.post('/api/contacts/scan-batch', fd, { timeout: 600000 });
+      // 直接呼叫 Railway 後端，繞過 Vercel 30 秒 rewrite proxy 超時限制
+      const directApi = process.env.REACT_APP_API_URL || '';
+      const scanUrl = directApi ? `${directApi}/api/contacts/scan-batch` : '/api/contacts/scan-batch';
+      const { data } = await axios.post(scanUrl, fd, { timeout: 600000 });
       setBatchResults(data);
       setSelectedBatch(new Set(data.contacts.map((_, i) => i)));
       toast.success(`找到 ${data.total_cards_found} 張名片！`);
